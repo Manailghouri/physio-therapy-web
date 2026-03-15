@@ -1,16 +1,6 @@
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-export const createClient = () => {
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error(
-      'Missing Supabase environment variables. Please create a .env.local file with:\n' +
-      'NEXT_PUBLIC_SUPABASE_URL=your-project-url\n' +
-      'NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key'
-    );
-  }
-
-  return createBrowserClient(supabaseUrl, supabaseKey);
-};
+export const supabase = createClient(
+  "https://dfsutzuegywynbzmzvwz.supabase.co",
+  "sb_publishable_O8heNzmt_5skljH2Rew8YA_kpoLZnke"
+);

@@ -1,105 +1,123 @@
-"use client"
+"use client";
 
-import { useState } from "react"
+import { useState } from "react";
+import { supabase } from "@/utils/supabase/client";
+import { useRouter } from "next/navigation";
 
 export default function SignupPage() {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [role, setRole] = useState<"patient" | "doctor">("patient")
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
+  const router = useRouter();
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setMessage(null)
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("patient");
+  const [loading, setLoading] = useState(false);
 
-    try {
-      const res = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, role }),
-      })
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
 
-      const data = await res.json()
-      if (!res.ok) {
-        setMessage(data?.error || "Signup failed")
-      } else {
-        setMessage("Signup successful — check your email to confirm (if required).")
-        setEmail("")
-        setPassword("")
-      }
-    } catch (err: any) {
-      setMessage(err?.message || String(err))
-    } finally {
-      setLoading(false)
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          role: role, // doctor or patient
+        },
+      },
+    });
+
+    setLoading(false);
+
+    if (error) {
+      alert(error.message);
+      return;
     }
-  }
+
+    alert("Signup successful! Please check your email.");
+    router.push("/login");
+  };
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-8">
-      <form onSubmit={onSubmit} className="w-full max-w-md space-y-4">
-        <h1 className="text-2xl font-semibold">Sign up</h1>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        height: "100vh",
+        background: "#f4f6f8",
+      }}
+    >
+      <div
+        style={{
+          width: "350px",
+          padding: "30px",
+          borderRadius: "10px",
+          background: "white",
+          boxShadow: "0 5px 20px rgba(0,0,0,0.1)",
+        }}
+      >
+        <h2 style={{ textAlign: "center", marginBottom: "20px" }}>
+          Create Account
+        </h2>
 
-        <label className="block">
-          <div className="text-sm">Email</div>
+        <form onSubmit={handleSignup}>
           <input
             type="email"
+            placeholder="Enter Email"
+            required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            required
-            className="mt-1 w-full rounded-md border px-3 py-2"
+            style={inputStyle}
           />
-        </label>
 
-        <label className="block">
-          <div className="text-sm">Password</div>
           <input
             type="password"
+            placeholder="Enter Password"
+            required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={6}
-            className="mt-1 w-full rounded-md border px-3 py-2"
+            style={inputStyle}
           />
-        </label>
 
-        <div>
-          <div className="text-sm mb-2">Sign up as</div>
-          <label className="mr-4">
-            <input
-              type="radio"
-              name="role"
-              value="patient"
-              checked={role === "patient"}
-              onChange={() => setRole("patient")}
-            />
-            <span className="ml-2">Patient</span>
+          <label style={{ fontSize: "14px", marginTop: "10px" }}>
+            Select Role
           </label>
-          <label>
-            <input
-              type="radio"
-              name="role"
-              value="doctor"
-              checked={role === "doctor"}
-              onChange={() => setRole("doctor")}
-            />
-            <span className="ml-2">Doctor</span>
-          </label>
-        </div>
 
-        <div>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="patient">Patient</option>
+            <option value="doctor">Doctor</option>
+          </select>
+
           <button
             type="submit"
-            className="w-full rounded-md bg-blue-600 px-4 py-2 text-white disabled:opacity-60"
             disabled={loading}
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginTop: "15px",
+              background: "#0070f3",
+              color: "white",
+              border: "none",
+              borderRadius: "5px",
+              cursor: "pointer",
+            }}
           >
-            {loading ? "Signing up..." : "Sign up"}
+            {loading ? "Creating Account..." : "Sign Up"}
           </button>
-        </div>
-
-        {message && <div className="mt-2 text-sm">{message}</div>}
-      </form>
-    </main>
-  )
+        </form>
+      </div>
+    </div>
+  );
 }
+
+const inputStyle = {
+  width: "100%",
+  padding: "10px",
+  marginTop: "10px",
+  borderRadius: "5px",
+  border: "1px solid #ccc",
+};
