@@ -12,7 +12,6 @@ import { getAllExercises, deleteExercise, type ExerciseVideo } from "@/lib/stora
 
 export default function Home() {
   const [exercises, setExercises] = useState<ExerciseVideo[]>([]) 
-  const [step, setStep] = useState<"list" | "create">("list")
 
   useEffect(() => {
     setExercises(getAllExercises())
@@ -26,8 +25,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-background p-8">
       <div className="max-w-2xl mx-auto">
-        {step === "list" && (
-          <div className="space-y-6">
+         <div className="space-y-6">
             <div className="text-center space-y-2 mb-8">
               <h1 className="text-4xl font-bold">Physiotherapy Guidance System</h1>
               <p className="text-muted-foreground">Proof of Concept</p>
@@ -69,7 +67,6 @@ export default function Home() {
               </div>
             )}
           </div>
-        )}
       </div>
     </main>
   )
