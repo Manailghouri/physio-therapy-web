@@ -22,6 +22,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Server missing Supabase config" }, { status: 500 })
     }
 
+
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
     const { data: signData, error: signError } = await supabase.auth.signUp({ email, password })
