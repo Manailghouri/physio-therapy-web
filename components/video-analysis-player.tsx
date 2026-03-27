@@ -9,6 +9,10 @@ import type { MovementSequence } from "@/lib/pose-analyzer"
 /**
  * One Euro Filter for smooth landmark tracking in real-time playback
  */
+
+// ROHA to FUTURE ROHA
+// was gonna nuke this out to use OneEuroFilter from @lib/filter.ts
+// but there are ~some differences so figure this out later 
 class OneEuroFilter {
   private x_prev: number = 0
   private dx_prev: number = 0
