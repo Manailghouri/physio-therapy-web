@@ -24,24 +24,44 @@ export async function POST(req: Request) {
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+    console.log(`[signup] Attempting signup for ${email} as ${role}`)
+
     const { data: signData, error: signError } = await supabase.auth.signUp({ email, password })
-    if (signError) return NextResponse.json({ error: signError.message }, { status: 400 })
 
-    // The users table is populated automatically via a DB trigger on auth.users.
-    const userId = signData?.user?.id
-    if (!userId) return NextResponse.json({ error: "No user id returned from auth" }, { status: 500 })
-
-    if (role === "patient") {
-      await supabase.from("patients").insert([{ auth_id: userId, name: "", email, phone_number: "" }])
-    } else if (role === "doctor") {
-      const code = `doc_${Math.random().toString(36).slice(2, 9)}`
-      await supabase
-        .from("doctors")
-        .insert([{ auth_id: userId, name: "", email, phone_number: "", hospital: "", bio: "", doctor_code: code }])
+    if (signError) {
+      console.error(`[signup] Auth error:`, signError.message, `| status: ${signError.status}`)
+      return NextResponse.json({ error: `Auth failed: ${signError.message}` }, { status: 400 })
     }
 
+    const userId = signData?.user?.id
+    console.log(`[signup] Auth user created:`, { userId, email, identities: signData?.user?.identities?.length })
+
+    // If identities is empty, the email is already registered
+    if (!userId || signData?.user?.identities?.length === 0) {
+      console.warn(`[signup] User already exists or no ID returned for ${email}`)
+      return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 })
+    }
+
+    // The trigger on auth.users already created the public.users row.
+    // Now set the role on it.
+    if (role !== "patient" && role !== "doctor") {
+      console.error(`[signup] Invalid role: ${role}`)
+      return NextResponse.json({ error: `Invalid role "${role}". Must be "patient" or "doctor"` }, { status: 400 })
+    }
+
+    const { error: updateErr } = await supabase
+      .from("users")
+      .update({ role })
+      .eq("id", userId)
+    if (updateErr) {
+      console.error(`[signup] Failed to set role on users row:`, updateErr.message, updateErr.details)
+      return NextResponse.json({ error: `Account created but role update failed: ${updateErr.message}` }, { status: 500 })
+    }
+
+    console.log(`[signup] Success: ${email} registered as ${role}`)
     return NextResponse.json({ ok: true })
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || String(err) }, { status: 500 })
+    console.error(`[signup] Unexpected error:`, err)
+    return NextResponse.json({ error: `Unexpected error: ${err?.message || String(err)}` }, { status: 500 })
   }
 }
