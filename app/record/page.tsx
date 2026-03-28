@@ -11,6 +11,7 @@ import { saveExerciseVideo } from "@/lib/storage"
 import { saveTemplate } from "@/lib/template-storage"
 import { analyzeVideoForPose, type PoseAnalysisResult } from "@/lib/pose-analyzer"
 import { EXERCISE_CONFIGS, getExerciseConfig } from "@/lib/exercise-config"
+import { formatAngleName } from "@/lib/utils"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 
@@ -46,46 +47,27 @@ export default function RecordPage() {
   const handleSave = async () => {
     if (recordedBlob) {
       setIsAnalyzing(true)
-      
+
       try {
-        console.log("Starting video analysis...")
-        
         // Get angles of interest for the selected exercise type
-        // for knee exercises, the only angles of interest are legs so you skip calculation for all the other angles to save compute tiem
         const exerciseConfig = getExerciseConfig(exerciseType)
         const anglesOfInterest = exerciseConfig?.anglesOfInterest
-        
-        console.log(`Analyzing for exercise: ${exerciseConfig?.name}`)
-        console.log(`Angles of interest:`, anglesOfInterest)
-        
-        // Pass exercise info for state learning
-        // state learning works with k means clustering to group some specific angles in states
+
         const exerciseInfo = {
           name: exerciseName.trim() || exerciseConfig?.name || "exercise",
           type: exerciseType,
         }
-        
+
         const result = await analyzeVideoForPose(
-          recordedBlob, 
+          recordedBlob,
           anglesOfInterest,
           exerciseInfo
         )
         setAnalysisResult(result)
-        
-        console.log("Analysis complete!")
-        console.log("Joint Angles:", result.jointAngles)
-        console.log("Movements:", result.movements)
-        console.log("Summary:\n", result.summary)
-        
-        if (result.learnedTemplate) {
-          console.log("Learned Template:", result.learnedTemplate)
-        }
-        
+
         const videoName = exerciseName.trim() || exerciseConfig?.name || "exercise"
         await saveExerciseVideo(videoName, recordedBlob, exerciseType, result.learnedTemplate)
-        
-        console.log("Video saved successfully!")
-        
+
       } catch (error) {
         console.error("Error analyzing video:", error)
         alert(`Error analyzing video: ${error instanceof Error ? error.message : "Unknown error"}`)
@@ -129,7 +111,7 @@ export default function RecordPage() {
                 <div className="text-xs text-muted-foreground mt-2">
                   <strong>Tracked angles:</strong>{" "}
                   {getExerciseConfig(exerciseType)
-                    ?.anglesOfInterest.map((a: string) => a.replace("_", " "))
+                    ?.anglesOfInterest.map(formatAngleName)
                     .join(", ")}
                 </div>
               </div>
@@ -160,7 +142,7 @@ export default function RecordPage() {
               <div className="mt-2 text-sm bg-muted p-3 rounded-lg">
                 <strong>Tracking:</strong>{" "}
                 {getExerciseConfig(exerciseType)
-                  ?.anglesOfInterest.map((a) => a.replace("_", " ").toUpperCase())
+                  ?.anglesOfInterest.map((a) => formatAngleName(a).toUpperCase())
                   .join(", ")}
               </div>
             </div>
@@ -244,7 +226,7 @@ export default function RecordPage() {
                   </h3>
                   <p className="text-sm text-muted-foreground">
                     Analyzed joints: {getExerciseConfig(exerciseType)
-                      ?.anglesOfInterest.map((a) => a.replace("_", " "))
+                      ?.anglesOfInterest.map(formatAngleName)
                       .join(", ")}
                   </p>
                 </Card>
@@ -256,132 +238,11 @@ export default function RecordPage() {
                   anglesOfInterest={getExerciseConfig(exerciseType)?.anglesOfInterest}
                 />
 
-                {/* <Card className="p-6">
-                  <h3 className="font-semibold mb-4">Movement Summary</h3>
-                  <pre className="text-xs whitespace-pre-wrap bg-muted p-4 rounded overflow-x-auto">
-                    {analysisResult.summary}
-                  </pre>
-                </Card> */}
-
-                {/* <Card className="p-6">
-                  <h3 className="font-semibold mb-4">Detected Movements ({analysisResult.movements.length})</h3>
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {analysisResult.movements.map((movement, idx) => (
-                      <div key={idx} className="p-4 bg-muted rounded text-sm border-l-4 border-primary">
-                        <div className="font-medium text-base">
-                          {movement.joint.replace("_segment", "").replace("_", " ").toUpperCase()}
-                        </div>
-                        <div className="text-lg font-bold text-primary mt-1">
-                          {movement.angleDelta > 0 ? "↗" : "↘"} {Math.abs(movement.angleDelta).toFixed(1)}° change
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-2">
-                          {movement.startAngle.toFixed(1)}° → {movement.endAngle.toFixed(1)}°
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Time: {movement.startTime.toFixed(1)}s - {movement.endTime.toFixed(1)}s (
-                          {movement.duration.toFixed(1)}s)
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Card> */}
-
-               {/* <Card className="p-6">
-                  <h3 className="font-semibold mb-4">
-                    Angle Data ({analysisResult.jointAngles.length} measurements)
-                  </h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    All angle measurements captured throughout the video
-                  </p>
-                  
-                  <div className="space-y-4 max-h-96 overflow-y-auto">
-                    {(() => {
-                      // Group joint angles by joint name
-                      const groupedAngles = analysisResult.jointAngles.reduce((acc, ja) => {
-                        if (!acc[ja.joint]) {
-                          acc[ja.joint] = []
-                        }
-                        acc[ja.joint].push(ja)
-                        return acc
-                      }, {} as Record<string, typeof analysisResult.jointAngles>)
-                      
-                      return Object.entries(groupedAngles).map(([joint, angles]) => {
-                        // Calculate statistics
-                        const values = angles.map(a => a.angle)
-                        const min = Math.min(...values)
-                        const max = Math.max(...values)
-                        const avg = values.reduce((sum, v) => sum + v, 0) / values.length
-                        
-                        return (
-                          <div key={joint} className="p-4 bg-muted rounded border-l-4 border-blue-500">
-                            <div className="flex items-center justify-between mb-2">
-                              <h4 className="font-medium text-base">
-                                {joint.replace("_segment", "").replace("_", " ").toUpperCase()}
-                              </h4>
-                              <span className="text-xs text-muted-foreground">
-                                {angles.length} points
-                              </span>
-                            </div>
-                            
-                            <div className="grid grid-cols-3 gap-4 text-sm">
-                              <div>
-                                <div className="text-xs text-muted-foreground">Min</div>
-                                <div className="font-semibold text-lg">{min.toFixed(1)}°</div>
-                              </div>
-                              <div>
-                                <div className="text-xs text-muted-foreground">Avg</div>
-                                <div className="font-semibold text-lg">{avg.toFixed(1)}°</div>
-                              </div>
-                              <div>
-                                <div className="text-xs text-muted-foreground">Max</div>
-                                <div className="font-semibold text-lg">{max.toFixed(1)}°</div>
-                              </div>
-                            </div>
-                            
-                            <div className="mt-3">
-                              <div className="text-xs text-muted-foreground mb-1">Range of Motion</div>
-                              <div className="w-full bg-background rounded-full h-2 relative overflow-hidden">
-                                <div 
-                                  className="absolute h-full bg-blue-500 rounded-full"
-                                  style={{
-                                    left: `${(min / 180) * 100}%`,
-                                    width: `${((max - min) / 180) * 100}%`
-                                  }}
-                                />
-                              </div>
-                              <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                                <span>0°</span>
-                                <span>{(max - min).toFixed(1)}° range</span>
-                                <span>180°</span>
-                              </div>
-                            </div>
-                            
-                            <details className="mt-3">
-                              <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                                Show sample values
-                              </summary>
-                              <div className="mt-2 space-y-1 text-xs">
-                                {[0, Math.floor(angles.length / 2), angles.length - 1].map((idx) => (
-                                  <div key={idx} className="flex justify-between">
-                                    <span>Time: {angles[idx].timestamp.toFixed(2)}s</span>
-                                    <span className="font-mono">{angles[idx].angle.toFixed(1)}°</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </details>
-                          </div>
-                        )
-                      })
-                    })()}
-                  </div>
-                </Card> */}
-
                 {analysisResult.learnedTemplate && (
                   <LearnedTemplateView 
                     template={analysisResult.learnedTemplate}
                     onSaveTemplate={() => {
-                      const templateId = saveTemplate(analysisResult.learnedTemplate!, recordedBlob)
-                      console.log("Saved template with ID:", templateId)
+                      saveTemplate(analysisResult.learnedTemplate!, recordedBlob)
                       alert(`Template saved! You can now use "${analysisResult.learnedTemplate!.exerciseName}" as a reference for comparisons.`)
                     }}
                   />

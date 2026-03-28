@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   description: "Safe physio at home",
 };
 
+// TODO - add a signout button so it persists throught routes
+
 export default function RootLayout({
   children,
 }: Readonly<{

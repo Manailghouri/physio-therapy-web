@@ -28,7 +28,6 @@ export const EXERCISE_CONFIGS: ExerciseConfig[] = [
       "left_knee",      // Hip-Knee-Ankle angle
       "right_knee",     // Hip-Knee-Ankle angle
       // Segment angles (2-point relative to vertical)
-      // these are kinda irrelevant i think because why bother tracking joints when youo're getting angles anyway
       "left_leg_segment",    // Knee-Ankle segment
       "right_leg_segment",   // Knee-Ankle segment
       "left_thigh_segment",  // Hip-Knee segment
@@ -84,37 +83,3 @@ export function filterAnglesByExercise(
   return allAngles.filter((angle) => config.anglesOfInterest.includes(angle))
 }
 
-/**
- * Helper to convert old jointsOfInterest to anglesOfInterest
- * This maintains backward compatibility
- */
-export function getAnglesFromJoints(joints: string[]): string[] {
-  const angles: string[] = []
-  
-  joints.forEach((joint) => {
-    // Add the joint angle itself
-    angles.push(joint)
-    
-    // Add related segment angles
-    if (joint.includes("knee") || joint.includes("ankle")) {
-      const side = joint.includes("left") ? "left" : "right"
-      angles.push(`${side}_leg_segment`)
-      angles.push(`${side}_thigh_segment`)
-    }
-    if (joint.includes("hip")) {
-      const side = joint.includes("left") ? "left" : "right"
-      angles.push(`${side}_thigh_segment`)
-    }
-    if (joint.includes("elbow") || joint.includes("wrist")) {
-      const side = joint.includes("left") ? "left" : "right"
-      angles.push(`${side}_arm_segment`)
-      angles.push(`${side}_forearm_segment`)
-    }
-    if (joint.includes("shoulder")) {
-      const side = joint.includes("left") ? "left" : "right"
-      angles.push(`${side}_arm_segment`)
-    }
-  })
-  
-  return [...new Set(angles)] // Remove duplicates
-}

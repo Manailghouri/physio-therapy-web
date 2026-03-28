@@ -1,7 +1,3 @@
-
-// ROHA to ROHA: perhaps have learnt exercise templates stored locally and only store metrics?
-
-
 import type { LearnedExerciseTemplate } from "./exercise-state-learner"
 
 const STORAGE_KEY = "exercise_templates"
@@ -10,8 +6,9 @@ export interface SavedTemplate {
   id: string
   template: LearnedExerciseTemplate
   savedAt: string
-  videoUrl?: string 
+  videoUrl?: string
 }
+
 /**
  * Save a learned template to local storage
  */
@@ -46,16 +43,10 @@ export function saveTemplate(
       tryPersistTemplates(templates)
     }
   } else {
-    if (videoBlob) {
-      console.info(
-        `Video size ${(videoBlob.size / 1024 / 1024).toFixed(2)}MB too large for inline storage; storing metadata only.`
-      )
-    }
     templates.push(savedTemplate)
     tryPersistTemplates(templates)
   }
 
-  console.log(`Saved template: ${id}`)
   return id
 }
 
@@ -66,7 +57,6 @@ export function getAllTemplates(): SavedTemplate[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (!stored) return []
-    
     return JSON.parse(stored) as SavedTemplate[]
   } catch (error) {
     console.error("Error loading templates:", error)
@@ -86,8 +76,7 @@ export function getTemplate(id: string): SavedTemplate | null {
  * Get templates for a specific exercise type
  */
 export function getTemplatesByExerciseType(exerciseType: string): SavedTemplate[] {
-  const templates = getAllTemplates()
-  return templates.filter(t => t.template.exerciseType === exerciseType)
+  return getAllTemplates().filter(t => t.template.exerciseType === exerciseType)
 }
 
 /**
@@ -96,13 +85,12 @@ export function getTemplatesByExerciseType(exerciseType: string): SavedTemplate[
 export function deleteTemplate(id: string): boolean {
   const templates = getAllTemplates()
   const filtered = templates.filter(t => t.id !== id)
-  
+
   if (filtered.length !== templates.length) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered))
-    console.log(`🗑️ Deleted template: ${id}`)
     return true
   }
-  
+
   return false
 }
 
@@ -111,7 +99,6 @@ export function deleteTemplate(id: string): boolean {
  */
 export function clearAllTemplates(): void {
   localStorage.removeItem(STORAGE_KEY)
-  console.log("🗑️ Cleared all templates")
 }
 
 /**
@@ -121,15 +108,13 @@ export function exportTemplates(): void {
   const templates = getAllTemplates()
   const dataStr = JSON.stringify(templates, null, 2)
   const dataUri = `data:application/json;charset=utf-8,${encodeURIComponent(dataStr)}`
-  
+
   const exportFileDefaultName = `exercise_templates_${new Date().toISOString().split('T')[0]}.json`
-  
+
   const linkElement = document.createElement('a')
   linkElement.setAttribute('href', dataUri)
   linkElement.setAttribute('download', exportFileDefaultName)
   linkElement.click()
-  
-  console.log(`Exported ${templates.length} templates`)
 }
 
 /**
@@ -139,21 +124,18 @@ export function importTemplates(jsonString: string): number {
   try {
     const imported = JSON.parse(jsonString) as SavedTemplate[]
     const existing = getAllTemplates()
-    
-    // Merge, avoiding duplicates by ID
+
     const merged = [...existing]
     let addedCount = 0
-    
+
     imported.forEach(template => {
       if (!merged.find(t => t.id === template.id)) {
         merged.push(template)
         addedCount++
       }
     })
-    
+
     localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
-    console.log(`Imported ${addedCount} new templates`)
-    
     return addedCount
   } catch (error) {
     console.error("Error importing templates:", error)
@@ -175,7 +157,6 @@ function tryPersistTemplates(templates: SavedTemplate[]) {
           delete templates[i].videoUrl
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(templates))
-            console.info("Saved after removing inline previews.")
             return
           } catch (e) {
             // continue cleanup
@@ -186,7 +167,6 @@ function tryPersistTemplates(templates: SavedTemplate[]) {
       const minimal = templates.map(t => ({ id: t.id, savedAt: t.savedAt, template: t.template }))
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(minimal))
-        console.info("Stored minimal template data after cleanup.")
       } catch (e2) {
         console.error("Failed to persist minimal template data.", e2)
       }
@@ -215,6 +195,5 @@ export function purgeTemplateVideoPreviews(): number {
     }
   })
   tryPersistTemplates(templates)
-  console.log(`Purged ${removed} inline video previews from templates.`)
   return removed
 }

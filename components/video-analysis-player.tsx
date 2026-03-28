@@ -5,65 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision"
 import type { MovementSequence } from "@/lib/pose-analyzer"
-
-/**
- * One Euro Filter for smooth landmark tracking in real-time playback
- */
-class OneEuroFilter {
-  private x_prev: number = 0
-  private dx_prev: number = 0
-  private t_prev: number = 0
-  
-  constructor(
-    private min_cutoff: number = 1.0,
-    private beta: number = 0.007,
-    private d_cutoff: number = 1.0
-  ) {}
-  
-  private smoothingFactor(t_e: number, cutoff: number): number {
-    const r = 2 * Math.PI * cutoff * t_e
-    return r / (r + 1)
-  }
-  
-  private exponentialSmoothing(a: number, x: number, x_prev: number): number {
-    return a * x + (1 - a) * x_prev
-  }
-  
-  filter(x: number, t: number): number {
-    const t_e = this.t_prev === 0 ? 0.016 : t - this.t_prev // Default to ~60fps
-    
-    if (t_e === 0) {
-      return x
-    }
-    
-    const dx = (x - this.x_prev) / t_e
-    const edx = this.exponentialSmoothing(
-      this.smoothingFactor(t_e, this.d_cutoff),
-      dx,
-      this.dx_prev
-    )
-    
-    const cutoff = this.min_cutoff + this.beta * Math.abs(edx)
-    
-    const x_filtered = this.exponentialSmoothing(
-      this.smoothingFactor(t_e, cutoff),
-      x,
-      this.x_prev
-    )
-    
-    this.x_prev = x_filtered
-    this.dx_prev = edx
-    this.t_prev = t
-    
-    return x_filtered
-  }
-  
-  reset() {
-    this.x_prev = 0
-    this.dx_prev = 0
-    this.t_prev = 0
-  }
-}
+import { OneEuroFilter } from "@/lib/filters"
 
 interface VideoAnalysisPlayerProps {
   videoBlob: Blob

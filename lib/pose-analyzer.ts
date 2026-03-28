@@ -1,4 +1,5 @@
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision"
+import { OneEuroFilter } from "@/lib/filters"
 
 export interface JointAngle {
   joint: string
@@ -35,72 +36,6 @@ export async function analyzeVideoForPose(
   exerciseInfo?: { name: string; type: string }
 ): Promise<PoseAnalysisResult> {
   return analyzeVideoForPoseBody(videoBlob, anglesOfInterest, exerciseInfo)
-}
-
-/**
- * One Euro Filter for temporal smoothing of landmarks
- * Reduces jitter while maintaining responsiveness to real movement
- */
-class OneEuroFilter {
-  private x_prev: number = 0
-  private dx_prev: number = 0
-  private t_prev: number = 0
-  private isFirstRun: boolean = true
-  
-  constructor(
-    private min_cutoff: number = 1.0,
-    private beta: number = 0.007,
-    private d_cutoff: number = 1.0
-  ) {}
-  
-  private smoothingFactor(t_e: number, cutoff: number): number {
-    const r = 2 * Math.PI * cutoff * t_e
-    return r / (r + 1)
-  }
-  
-  private exponentialSmoothing(a: number, x: number, x_prev: number): number {
-    return a * x + (1 - a) * x_prev
-  }
-  
-  filter(x: number, t: number): number {
-    if (this.isFirstRun) {
-      this.isFirstRun = false
-      this.x_prev = x
-      this.t_prev = t
-      return x
-    }
-
-    const t_e = this.t_prev === 0 ? 0 : t - this.t_prev
-    
-    if (t_e === 0) {
-      return x
-    }
-    
-    // Estimate velocity
-    const dx = (x - this.x_prev) / t_e
-    const edx = this.exponentialSmoothing(
-      this.smoothingFactor(t_e, this.d_cutoff),
-      dx,
-      this.dx_prev
-    )
-    
-    // Adaptive cutoff based on velocity
-    const cutoff = this.min_cutoff + this.beta * Math.abs(edx)
-    
-    // Smooth the signal
-    const x_filtered = this.exponentialSmoothing(
-      this.smoothingFactor(t_e, cutoff),
-      x,
-      this.x_prev
-    )
-    
-    // Store for next iteration
-    this.x_prev = x_filtered
-    this.dx_prev = edx
-    this.t_prev = t
-    
-    return x_filtered
-  }
 }
 
 /**
@@ -259,9 +194,7 @@ async function analyzeVideoForPoseBody(
   }
 }
 
-/**
- * Landmark smoother using One Euro Filters
- */
+
 class LandmarkSmoother {
   private filters: Map<string, { x: OneEuroFilter; y: OneEuroFilter; z: OneEuroFilter }> = new Map()
   

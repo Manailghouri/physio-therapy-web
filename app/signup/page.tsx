@@ -1,132 +1,105 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import Link from "next/link"
 
 export default function SignupPage() {
-  const router = useRouter();
+  const router = useRouter()
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState("patient");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [role, setRole] = useState("patient")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
 
   const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
+    e.preventDefault()
+    setLoading(true)
+    setError("")
 
     const res = await fetch("/api/auth/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, role }),
-    });
+    })
 
-    const data = await res.json();
-    setLoading(false);
+    const data = await res.json()
+    setLoading(false)
 
     if (!res.ok) {
-      setError(data.error || "Signup failed");
-      return;
+      setError(data.error || "Signup failed")
+      return
     }
 
-    router.push("/login");
-  };
+    router.push("/login")
+  }
 
   return (
-    <div style={containerStyle}>
-      <div style={cardStyle}>
-        <h2 style={{ textAlign: "center", marginBottom: "20px" }}>
-          Create Account
-        </h2>
+    <div className="flex min-h-screen items-center justify-center bg-muted/40">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle className="text-center text-2xl">Create Account</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSignup} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-sm font-medium" htmlFor="email">Email</label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="Enter email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
 
-        <form onSubmit={handleSignup}>
-          <input
-            type="email"
-            placeholder="Enter Email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={inputStyle}
-          />
+            <div className="space-y-1">
+              <label className="text-sm font-medium" htmlFor="password">Password</label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
 
-          <input
-            type="password"
-            placeholder="Enter Password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={inputStyle}
-          />
+            <div className="space-y-1">
+              <label className="text-sm font-medium" htmlFor="role">Role</label>
+              <select
+                id="role"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="patient">Patient</option>
+                <option value="doctor">Doctor</option>
+              </select>
+            </div>
 
-          <label style={{ fontSize: "14px", marginTop: "10px", display: "block" }}>
-            Select Role
-          </label>
+            {error && (
+              <p className="text-sm text-destructive">{error}</p>
+            )}
 
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="patient">Patient</option>
-            <option value="doctor">Doctor</option>
-          </select>
+            <Button type="submit" disabled={loading} className="w-full">
+              {loading ? "Creating Account..." : "Sign Up"}
+            </Button>
+          </form>
 
-          {error && (
-            <p style={{ color: "red", fontSize: "13px", marginTop: "8px" }}>
-              {error}
-            </p>
-          )}
-
-          <button type="submit" disabled={loading} style={buttonStyle}>
-            {loading ? "Creating Account..." : "Sign Up"}
-          </button>
-        </form>
-
-        <p style={{ textAlign: "center", marginTop: "15px", fontSize: "14px" }}>
-          Already have an account?{" "}
-          <a href="/login" style={{ color: "#0070f3" }}>
-            Log in
-          </a>
-        </p>
-      </div>
+          <p className="mt-4 text-center text-sm text-muted-foreground">
+            Already have an account?{" "}
+            <Link href="/login" className="text-primary underline-offset-4 hover:underline">
+              Log in
+            </Link>
+          </p>
+        </CardContent>
+      </Card>
     </div>
-  );
+  )
 }
-
-const containerStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  height: "100vh",
-  background: "#f4f6f8",
-};
-
-const cardStyle: React.CSSProperties = {
-  width: "350px",
-  padding: "30px",
-  borderRadius: "10px",
-  background: "white",
-  boxShadow: "0 5px 20px rgba(0,0,0,0.1)",
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px",
-  marginTop: "10px",
-  borderRadius: "5px",
-  border: "1px solid #ccc",
-  boxSizing: "border-box",
-};
-
-const buttonStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px",
-  marginTop: "15px",
-  background: "#0070f3",
-  color: "white",
-  border: "none",
-  borderRadius: "5px",
-  cursor: "pointer",
-};

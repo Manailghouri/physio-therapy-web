@@ -9,6 +9,7 @@ import { analyzeVideoForPose } from "@/lib/pose-analyzer"
 import { getExerciseConfig } from "@/lib/exercise-config"
 import type { LearnedExerciseTemplate } from "@/lib/exercise-state-learner"
 import { compareTemplates, type ComparisonResult } from "@/lib/comparison"
+import { formatAngleName, getSimilarityColor, getSimilarityBg, getDeviationBg } from "@/lib/utils"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { Upload, Loader2, CheckCircle2, XCircle, Video } from "lucide-react"
@@ -30,13 +31,16 @@ export default function ComparePage() {
   const videoRef = useRef<HTMLVideoElement>(null)
 
 
+  const resetInputMethod = () => {
+    setInputMethod(null)
+    setUploadedFile(null)
+    setUploadedVideoUrl(null)
+    setComparisonResult(null)
+  }
+
   useEffect(() => {
     const ex = getExercise(params.id as string)
-    if (ex) {
-      console.log("Loaded exercise:", ex)
-      console.log("Video URL:", ex.videoUrl)
-      setExercise(ex)
-    }
+    if (ex) setExercise(ex)
   }, [params.id])
 
 
@@ -54,7 +58,6 @@ export default function ComparePage() {
 
 
   const handleVideoRecorded = (videoBlob: Blob) => {
-    console.log("[ComparePage] Video recorded, blob size:", videoBlob.size)
     const file = new File([videoBlob], 'recorded-video.webm', { type: 'video/webm' })
     setUploadedFile(file)
     setUploadedVideoUrl(URL.createObjectURL(videoBlob))
@@ -72,14 +75,10 @@ export default function ComparePage() {
 
 
     try {
-      console.log("Starting video comparison...")
-      // Check if reference video already has a learned template
       let referenceTemplate: LearnedExerciseTemplate
       if (exercise.learnedTemplate) {
-        console.log("Using stored reference template")
         referenceTemplate = exercise.learnedTemplate
       } else {
-        console.warn("No stored template found, analyzing reference video...")
         const referenceBlob = await fetch(exercise.videoUrl).then(r => r.blob())
         const referenceAnalysis = await analyzeVideoForPose(
           referenceBlob,
@@ -92,41 +91,27 @@ export default function ComparePage() {
         referenceTemplate = referenceAnalysis.learnedTemplate
       }
 
-
-      console.log(" Analyzing uploaded video...")
       const exerciseConfig = getExerciseConfig(exercise.type)
       const anglesOfInterest = exerciseConfig?.anglesOfInterest
-      console.log(`Exercise type: ${exercise.type}`)
-      console.log(`Exercise config:`, exerciseConfig)
-      console.log(`Using angles of interest:`, anglesOfInterest)
-      if (!anglesOfInterest || anglesOfInterest.length === 0) {
-        console.warn("No angles of interest found, template learning may not work")
-      }
+
       const uploadedAnalysis = await analyzeVideoForPose(
         uploadedFile,
         anglesOfInterest,
         { name: exercise.name, type: exercise.type }
       )
-      console.log("Uploaded analysis result:", uploadedAnalysis)
-      console.log("Has learned template?", !!uploadedAnalysis.learnedTemplate)
-
 
       if (!uploadedAnalysis.learnedTemplate) {
         throw new Error(`Failed to learn uploaded exercise template. Video may be too short or no valid poses detected. Joint angles found: ${uploadedAnalysis.jointAngles.length}`)
       }
 
-
-      console.log("Comparing templates...")
       const comparison = compareTemplates(
         referenceTemplate,
         uploadedAnalysis.learnedTemplate
       )
 
-
       setComparisonResult(comparison)
-      console.log("Comparison complete:", comparison)
     } catch (err) {
-      console.error("❌ Error comparing videos:", err)
+      console.error("Error comparing videos:", err)
       setError(err instanceof Error ? err.message : "Failed to compare videos")
     } finally {
       setIsAnalyzing(false)
@@ -185,19 +170,13 @@ export default function ComparePage() {
                 className="w-full h-auto block"
                 crossOrigin="anonymous"
                 onError={(e) => {
-                  console.error("Video load error:", e)
-                  console.error("Video URL:", exercise.videoUrl)
-                  console.error("Error event:", e.currentTarget.error)
                   setVideoError(
                     e.currentTarget.error
                       ? `Error ${e.currentTarget.error.code}: ${e.currentTarget.error.message}`
                       : "Failed to load video"
                   )
                 }}
-                onLoadedData={() => {
-                  console.log("Video loaded successfully")
-                  setVideoError(null)
-                }}
+                onLoadedData={() => setVideoError(null)}
               >
                 <source src={exercise.videoUrl} type="video/webm" />
                 <source src={exercise.videoUrl} type="video/mp4" />
@@ -251,12 +230,7 @@ export default function ComparePage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        setInputMethod(null)
-                        setUploadedFile(null)
-                        setUploadedVideoUrl(null)
-                        setComparisonResult(null)
-                      }}
+                      onClick={resetInputMethod}
                     >
                       Change Method
                     </Button>
@@ -323,12 +297,7 @@ export default function ComparePage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      setInputMethod(null)
-                      setUploadedFile(null)
-                      setUploadedVideoUrl(null)
-                      setComparisonResult(null)
-                    }}
+                    onClick={resetInputMethod}
                   >
                     Change Method
                   </Button>
@@ -382,19 +351,13 @@ export default function ComparePage() {
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-lg font-semibold">Overall Similarity</span>
-                <span className={`text-3xl font-bold ${comparisonResult.similarity >= 80 ? 'text-green-500' :
-                  comparisonResult.similarity >= 60 ? 'text-yellow-500' :
-                    'text-red-500'
-                  }`}>
+                <span className={`text-3xl font-bold ${getSimilarityColor(comparisonResult.similarity)}`}>
                   {comparisonResult.similarity}%
                 </span>
               </div>
               <div className="w-full bg-muted rounded-full h-4 overflow-hidden">
                 <div
-                  className={`h-full transition-all ${comparisonResult.similarity >= 80 ? 'bg-green-500' :
-                    comparisonResult.similarity >= 60 ? 'bg-yellow-500' :
-                      'bg-red-500'
-                    }`}
+                  className={`h-full transition-all ${getSimilarityBg(comparisonResult.similarity)}`}
                   style={{ width: `${comparisonResult.similarity}%` }}
                 />
               </div>
@@ -445,10 +408,7 @@ export default function ComparePage() {
                       </div>
                       <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
                         <div
-                          className={`h-full ${similarity >= 80 ? 'bg-green-500' :
-                            similarity >= 60 ? 'bg-yellow-500' :
-                              'bg-red-500'
-                            }`}
+                          className={`h-full ${getSimilarityBg(similarity)}`}
                           style={{ width: `${similarity}%` }}
                         />
                       </div>
@@ -478,22 +438,12 @@ export default function ComparePage() {
                     }
                     return a.localeCompare(b)
                   })
-                  .map(([angle, deviation]) => {
-                    // Format angle names to be more readable
-                    const formattedAngle = angle
-                      .replace(/_/g, ' ')
-                      .replace(/\b\w/g, (char) => char.toUpperCase())
-                    
-                    return (
-                      <Card key={angle} className={`p-3 ${deviation < 10 ? 'bg-green-50 dark:bg-green-950/20' :
-                        deviation < 20 ? 'bg-yellow-50 dark:bg-yellow-950/20' :
-                          'bg-red-50 dark:bg-red-950/20'
-                        }`}>
-                        <div className="text-xs text-muted-foreground mb-1">{formattedAngle}</div>
+                  .map(([angle, deviation]) => (
+                      <Card key={angle} className={`p-3 ${getDeviationBg(deviation)}`}>
+                        <div className="text-xs text-muted-foreground mb-1">{formatAngleName(angle)}</div>
                         <div className="text-xl font-bold">±{Math.round(deviation)}°</div>
                       </Card>
-                    )
-                  })}
+                  ))}
               </div>
             </div>
           </Card>
@@ -501,6 +451,5 @@ export default function ComparePage() {
       </div>
     </main>
   )
-
 }
 
