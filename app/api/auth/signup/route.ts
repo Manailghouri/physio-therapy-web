@@ -58,10 +58,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 })
     }
 
-    // The trigger on auth.users already created the public.users row.
-    // Now set the role on it.
+
     if (role !== "patient" && role !== "doctor") {
       console.error(`[signup] Invalid role: ${role}`)
+      // this shouldn't be a problem coz input sanitization is happening on the frontend
+      // will remove later
       return NextResponse.json({ error: `Invalid role "${role}". Must be "patient" or "doctor"` }, { status: 400 })
     }
 
@@ -75,14 +76,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `Account created but role update failed: ${updateErr.message}` }, { status: 500 })
     }
 
-    // Create the role-specific profile row (id FK → users.id)
-    const table = role === "patient" ? "patients" : "doctors"
-    const { error: insertErr } = await supabaseAdmin
-      .from(table)
-      .insert({ id: userId })
-    if (insertErr) {
-      console.error(`[signup] Failed to insert ${table} row:`, insertErr.message, insertErr.details)
-      return NextResponse.json({ error: `Account created but ${table} profile failed: ${insertErr.message}` }, { status: 500 })
+    // relevant row insert ere 
+    if (role === "doctor") {
+      // Insert doctor row with a unique doctor_code
+      // this will only failif the same code already exists (unique constraints on the db so this'll be rejected)
+      let inserted = false
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const code = generateDoctorCode()
+        const { error: insertErr } = await supabaseAdmin
+          .from("doctors")
+          .insert({ id: userId, doctor_code: code })
+        if (!insertErr) {
+          console.log(`[signup] Doctor code assigned: ${code}`)
+          inserted = true
+          break
+        }
+        // retry with a new code upto 3 times before going YOU SHALL NOT PASS
+        if (insertErr.code === "23505" && insertErr.message.includes("doctor_code")) {
+          console.warn(`[signup] Doctor code collision (${code}), retrying...`)
+          continue
+        }
+        // YOU SHALL NOT PASS
+        console.error(`[signup] Failed to insert doctors row:`, insertErr.message, insertErr.details)
+        return NextResponse.json({ error: `Account created but doctors profile failed: ${insertErr.message}` }, { status: 500 })
+      }
+      if (!inserted) {
+        return NextResponse.json({ error: "Failed to generate a unique doctor code. Please try again." }, { status: 500 })
+      }
+    } else {
+      const { error: insertErr } = await supabaseAdmin
+        .from("patients")
+        .insert({ id: userId })
+      if (insertErr) {
+        console.error(`[signup] Failed to insert patients row:`, insertErr.message, insertErr.details)
+        return NextResponse.json({ error: `Account created but patients profile failed: ${insertErr.message}` }, { status: 500 })
+      }
     }
 
     console.log(`[signup] Success: ${email} registered as ${role}`)
