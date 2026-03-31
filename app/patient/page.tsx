@@ -35,14 +35,17 @@ export default function PatientPage() {
         .single()
 
       if (patient?.doctor_id) {
-        // Fetch linked doctor's name
-        const { data: doctor } = await supabase
-          .from("doctors")
-          .select("name")
+        const { data: doctorUser } = await supabase
+          .from("users")
+          .select("first_name, last_name")
           .eq("id", patient.doctor_id)
           .single()
+          console.log(doctorUser)
 
-        setDoctorName(doctor?.name ?? "your doctor")
+        const name = doctorUser
+          ? [doctorUser.first_name, doctorUser.last_name].filter(Boolean).join(" ")
+          : ""
+        setDoctorName(name || "Your Doctor")
         setHasDoctor(true)
       }
 

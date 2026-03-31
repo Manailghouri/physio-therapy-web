@@ -36,15 +36,24 @@ export async function POST(req: Request) {
     }
 
     // Look up the doctor by code
+    const codeToSearch = doctor_code.trim().toUpperCase()
+
     const { data: doctor, error: lookupErr } = await supabaseAdmin
       .from("doctors")
-      .select("id, name")
-      .eq("doctor_code", doctor_code.trim().toUpperCase())
+      .select("id")
+      .eq("doctor_code", codeToSearch)
       .single()
 
     if (lookupErr || !doctor) {
       return NextResponse.json({ error: "Invalid doctor code" }, { status: 404 })
     }
+
+    // Get the doctor's name from the users table
+    const { data: doctorUser } = await supabaseAdmin
+      .from("users")
+      .select("first_name, last_name")
+      .eq("id", doctor.id)
+      .single()
 
     // Update the patient's doctor_id
     const { error: updateErr } = await supabaseAdmin
@@ -57,7 +66,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Failed to link doctor" }, { status: 500 })
     }
 
-    return NextResponse.json({ ok: true, doctor_name: doctor.name })
+    const doctorName = doctorUser
+      ? [doctorUser.first_name, doctorUser.last_name].filter(Boolean).join(" ")
+      : ""
+    return NextResponse.json({ ok: true, doctor_name: doctorName || "Your Doctor" })
   } catch (err: any) {
     console.error("[link-doctor] Unexpected error:", err)
     return NextResponse.json({ error: `Unexpected error: ${err?.message || String(err)}` }, { status: 500 })
