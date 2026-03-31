@@ -1,5 +1,3 @@
-// subject to refactor - this'll 
-
 "use client"
 
 import { useState, useEffect, useRef } from "react"
@@ -127,8 +125,8 @@ export default function ComparePage() {
         <div className="max-w-2xl mx-auto">
           <Card className="p-8 text-center">
             <p className="text-muted-foreground">Exercise not found</p>
-            <Link href="/">
-              <Button className="mt-4">Back Home</Button>
+            <Link href="/patient">
+              <Button className="mt-4">Back to Dashboard</Button>
             </Link>
           </Card>
         </div>
@@ -141,7 +139,7 @@ export default function ComparePage() {
     <main className="min-h-screen bg-background p-2 md:p-4">
       <div className="w-full max-w-[98vw] mx-auto space-y-4">
         <div className="flex items-center justify-between">
-          <Link href="/">
+          <Link href="/patient">
             <Button variant="outline" size="sm">← Back</Button>
           </Link>
         </div>
@@ -304,7 +302,7 @@ export default function ComparePage() {
                     Change Method
                   </Button>
                 </div>
-                <ComparisonRecorder 
+                <ComparisonRecorder
                   onVideoRecorded={handleVideoRecorded}
                   anglesOfInterest={getExerciseConfig(exercise?.type)?.anglesOfInterest || ["right_knee"]}
                   exerciseName={exercise?.name}
@@ -382,7 +380,7 @@ export default function ComparePage() {
             {exercise.type === 'scap-wall-slides' && (
               <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
                 <p className="text-sm text-muted-foreground">
-                  <strong>Bilateral Exercise:</strong> Both arms are tracked together. 
+                  <strong>Bilateral Exercise:</strong> Both arms are tracked together.
                   Keep both shoulders and elbows moving in sync through the 105-155° range for best results.
                 </p>
               </div>
@@ -390,7 +388,7 @@ export default function ComparePage() {
             {exercise.type === 'knee-extension' && (
               <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
                 <p className="text-sm text-muted-foreground">
-                  <strong>Single Leg Exercise:</strong> Each leg is tracked independently. 
+                  <strong>Single Leg Exercise:</strong> Each leg is tracked independently.
                   Focus on maintaining control and reaching full extension with each rep.
                 </p>
               </div>
@@ -454,4 +452,3 @@ export default function ComparePage() {
     </main>
   )
 }
-

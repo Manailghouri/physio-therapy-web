@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { supabase } from "@/utils/supabase/client"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 
 export default function PatientPage() {
   const router = useRouter()
@@ -114,6 +115,7 @@ export default function PatientPage() {
             <p className="text-muted-foreground">
               Your doctor hasn&apos;t added any exercises yet.
             </p>
+            {/* TODO: list available exercises and link to /patient/compare/[id] */}
           </div>
         ) : (
           <div className="max-w-sm space-y-4">

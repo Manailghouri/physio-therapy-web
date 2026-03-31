@@ -2,14 +2,33 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { RecordExercise } from "@/components/record-exercise"
 import { supabase } from "@/utils/supabase/client"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
+
+interface LinkedPatient {
+  id: string
+  email: string
+  firstName: string | null
+  lastName: string | null
+}
 
 export default function DoctorPage() {
   const router = useRouter()
   const [email, setEmail] = useState<string | null>(null)
   const [doctorCode, setDoctorCode] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [patients, setPatients] = useState<LinkedPatient[]>([])
+  const [patientsLoading, setPatientsLoading] = useState(true)
+  const [assignPatient, setAssignPatient] = useState<LinkedPatient | null>(null)
 
   useEffect(() => {
     async function loadDoctor() {
@@ -31,6 +50,42 @@ export default function DoctorPage() {
       }
 
       setDoctorCode(data?.doctor_code ?? null)
+
+      const { data: patientRows, error: patientsErr } = await supabase
+        .from("patients")
+        .select("id")
+        .eq("doctor_id", session.user.id)
+
+      console.log(patientRows)
+
+      if (patientsErr) {
+        console.error("[doctor] Failed to fetch patients:", patientsErr.message)
+        setPatientsLoading(false)
+        return
+      }
+
+      if (patientRows && patientRows.length > 0) {
+        const ids = patientRows.map((p) => p.id)
+        const { data: userRows, error: usersErr } = await supabase
+          .from("users")
+          .select("id, email, first_name, last_name")
+          .in("id", ids)
+
+        if (usersErr) {
+          console.error("[doctor] Failed to fetch patient users:", usersErr.message)
+        }
+
+        setPatients(
+          (userRows ?? []).map((u) => ({
+            id: u.id,
+            email: u.email ?? "",
+            firstName: u.first_name ?? null,
+            lastName: u.last_name ?? null,
+          }))
+        )
+      }
+
+      setPatientsLoading(false)
     }
     loadDoctor()
   }, [router])
@@ -58,23 +113,90 @@ export default function DoctorPage() {
       </div>
       <div className="p-8">
         {doctorCode && (
-          <div className="rounded-lg border p-6 max-w-sm">
-            <p className="text-sm text-muted-foreground mb-1">Your doctor code</p>
-            <p className="text-3xl font-mono font-bold tracking-widest">{doctorCode}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-3"
-              onClick={handleCopy}
-            >
-              {copied ? "Copied!" : "Copy Code"}
-            </Button>
-            <p className="text-sm text-muted-foreground mt-3">
-              Share this code with your patients so they can link to you.
-            </p>
+          <div className="space-y-6">
+            <div className="rounded-lg border p-6 max-w-sm">
+              <p className="text-sm text-muted-foreground mb-1">Your doctor code</p>
+              <p className="text-3xl font-mono font-bold tracking-widest">{doctorCode}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={handleCopy}
+              >
+                {copied ? "Copied!" : "Copy Code"}
+              </Button>
+              <p className="text-sm text-muted-foreground mt-3">
+                Share this code with your patients so they can link to you.
+              </p>
+            </div>
+
+            <Link href="/doctor/record">
+              <Button size="lg">Record Exercise</Button>
+            </Link>
+
+            {/* Linked Patients */}
+            <div>
+              <h2 className="text-lg font-semibold mb-3">Your Patients</h2>
+              {patientsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading patients...</p>
+              ) : patients.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No patients linked yet. Share your doctor code to get started.
+                </p>
+              ) : (
+                <div className="space-y-2 max-w-md">
+                  {patients.map((p) => {
+                    const name = [p.firstName, p.lastName].filter(Boolean).join(" ")
+                    return (
+                      <Card key={p.id} className="flex items-center justify-between p-4">
+                        <div>
+                          {name && <p className="font-medium">{name}</p>}
+                          <p className={name ? "text-sm text-muted-foreground" : "font-medium"}>
+                            {p.email}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setAssignPatient(p)}
+                        >
+                          Assign Exercise
+                        </Button>
+                      </Card>
+                    )
+                  })}
+                  <p className="text-xs text-muted-foreground pt-1">
+                    {patients.length} patient{patients.length !== 1 && "s"} linked
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
+
+      {/* Assign Exercise Dialog */}
+      <Dialog
+        open={assignPatient !== null}
+        onOpenChange={(open) => { if (!open) setAssignPatient(null) }}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Assign Exercise to{" "}
+              {assignPatient
+                ? [assignPatient.firstName, assignPatient.lastName].filter(Boolean).join(" ") || assignPatient.email
+                : ""}
+            </DialogTitle>
+          </DialogHeader>
+          {assignPatient && (
+            <RecordExercise
+              onComplete={() => setAssignPatient(null)}
+              doneLabel="Done"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
