@@ -41,6 +41,14 @@ export default function Home() {
     router.push("/login")
   }
 
+  useEffect(() => {
+    if (role === "patient") {
+      router.replace("/patient")
+    } else if (role === "doctor") {
+      router.replace("/doctor")
+    }
+  }, [role, router])
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -67,15 +75,5 @@ export default function Home() {
     )
   }
 
-  // editing usestate was causnig problems (infinite renders)
-  // so switched to useeffect
-  useEffect(() => {
-    if (role === "patient") {
-      router.replace("/patient")
-    } else if (role === "doctor") {
-      router.replace("/doctor")
-    }
-  }, [role, router])
-
-  return null  
+  return null
 }
