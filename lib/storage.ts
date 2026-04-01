@@ -14,6 +14,7 @@ export interface ExerciseVideo {
 const STORAGE_KEY = "exercise-videos"
 const SUPABASE_BUCKET = "reference-videos"
 
+// to be removed once storage functionality is working (keeping these as reference for now)
 function getVideos(): ExerciseVideo[] {
   if (typeof window === "undefined") return []
   try {
@@ -25,6 +26,8 @@ function getVideos(): ExerciseVideo[] {
   }
 }
 
+
+// to be removed
 function saveVideos(videos: ExerciseVideo[]) {
   if (typeof window === "undefined") return
   try {
@@ -34,6 +37,7 @@ function saveVideos(videos: ExerciseVideo[]) {
   }
 }
 
+// keeping for reference rn
 export async function saveExerciseVideo(
   name: string,
   videoBlob: Blob,
@@ -86,6 +90,46 @@ export async function saveExerciseVideo(
     console.error("Error in saveExerciseVideo:", err)
     throw err
   }
+}
+
+export interface UploadResult {
+  videoUrl: string
+  videoPath: string
+}
+
+
+export async function uploadVideoToStorage(
+  name: string,
+  videoBlob: Blob,
+  exerciseType: string
+): Promise<UploadResult> {
+  const id = Date.now().toString()
+  const fileName = `${id}_${name.replace(/[^a-z0-9]/gi, "_").toLowerCase()}.webm`
+  const filePath = `${exerciseType}/${fileName}`
+
+  const { error: uploadError } = await supabase.storage
+    .from(SUPABASE_BUCKET)
+    .upload(filePath, videoBlob, {
+      contentType: videoBlob.type || "video/webm",
+      cacheControl: "3600",
+      upsert: false,
+    })
+
+  if (uploadError) {
+    throw new Error(`Failed to upload video: ${uploadError.message}`)
+  }
+
+  const { data: urlData } = supabase.storage
+    .from(SUPABASE_BUCKET)
+    .getPublicUrl(filePath)
+
+  if (!urlData?.publicUrl) {
+    throw new Error("Failed to get public URL for uploaded video")
+  }
+
+
+  
+  return { videoUrl: urlData.publicUrl, videoPath: filePath }
 }
 
 export function getAllExercises(): ExerciseVideo[] {
