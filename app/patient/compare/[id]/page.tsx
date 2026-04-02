@@ -48,15 +48,35 @@ export default function ComparePage() {
         .eq("id", params.id as string)
         .single()
 
-      if (data && !error) {
-        setExercise({
-          id: data.id,
-          name: data.name,
-          type: data.exercise_type,
-          videoUrl: data.video_url,
-          learnedTemplate: data.template,
-        })
+      if (!data || error) {
+        setIsLoading(false)
+        return
       }
+
+      // Get a signed URL for the private storage bucket
+      let videoUrl = data.video_url
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        try {
+          const res = await fetch(`/api/exercises/signed-url?id=${data.id}`, {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          })
+          if (res.ok) {
+            const { signedUrl } = await res.json()
+            videoUrl = signedUrl
+          }
+        } catch (e) {
+          console.error("Failed to get signed URL, falling back to stored URL:", e)
+        }
+      }
+
+      setExercise({
+        id: data.id,
+        name: data.name,
+        type: data.exercise_type,
+        videoUrl,
+        learnedTemplate: data.template,
+      })
       setIsLoading(false)
     }
     fetchExercise()
