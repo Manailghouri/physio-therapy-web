@@ -7,8 +7,7 @@ import { Input } from "@/components/ui/input"
 import { SimpleRecorder } from "@/components/simple-recorder"
 import { VideoAnalysisPlayer } from "@/components/video-analysis-player"
 import { LearnedTemplateView } from "@/components/learned-template-view"
-import { saveExerciseVideo, uploadVideoToStorage } from "@/lib/storage"
-import { saveTemplate } from "@/lib/template-storage"
+import { uploadVideoToStorage } from "@/lib/storage"
 import { supabase } from "@/utils/supabase/client"
 import { analyzeVideoForPose, type PoseAnalysisResult } from "@/lib/pose-analyzer"
 import { EXERCISE_CONFIGS, getExerciseConfig } from "@/lib/exercise-config"
@@ -77,36 +76,34 @@ export function RecordExercise({
         const videoName = exerciseName.trim() || exerciseConfig?.name || "exercise"
 
 
-        // dis to ensure that the doctor has any patient to whom he's assigning an exercise otherwise enforce a you shall not pass decree
-        if (patientId) {
-          const { videoUrl, videoPath } = await uploadVideoToStorage(videoName, recordedBlob, exerciseType)
+        if (!patientId) {
+          throw new Error("No patient selected. Please select a patient first.")
+        }
 
-          const { data: { session } } = await supabase.auth.getSession()
-          if (!session) throw new Error("Session expired. Please log in again.")
+        const { videoUrl, videoPath } = await uploadVideoToStorage(videoName, recordedBlob, exerciseType)
 
-          const res = await fetch("/api/exercises/assign", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${session.access_token}`,
-            },
-            body: JSON.stringify({
-              patient_id: patientId,
-              name: videoName,
-              exercise_type: exerciseType,
-              video_path: videoPath,
-              video_url: videoUrl,
-              template: result.learnedTemplate,
-            }),
-          })
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) throw new Error("Session expired. Please log in again.")
 
-          if (!res.ok) {
-            const data = await res.json()
-            throw new Error(data.error || "Failed to assign exercise")
-          }
-        } else {
-          // removing soon
-          await saveExerciseVideo(videoName, recordedBlob, exerciseType, result.learnedTemplate)
+        const res = await fetch("/api/exercises/assign", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            patient_id: patientId,
+            name: videoName,
+            exercise_type: exerciseType,
+            video_path: videoPath,
+            video_url: videoUrl,
+            template: result.learnedTemplate,
+          }),
+        })
+
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || "Failed to assign exercise")
         }
 
       } catch (error) {
@@ -276,10 +273,6 @@ export function RecordExercise({
               {analysisResult.learnedTemplate && (
                 <LearnedTemplateView
                   template={analysisResult.learnedTemplate}
-                  onSaveTemplate={() => {
-                    saveTemplate(analysisResult.learnedTemplate!, recordedBlob)
-                    alert(`Template saved! You can now use "${analysisResult.learnedTemplate!.exerciseName}" as a reference for comparisons.`)
-                  }}
                 />
               )}
 
