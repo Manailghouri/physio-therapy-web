@@ -44,26 +44,27 @@ export default function SignupPage() {
   }
 
   const handleVerify = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError("")
+  e.preventDefault()
+  setLoading(true)
+  setError("")
 
-    const { error: verifyError } = await supabase.auth.verifyOtp({
-      email,
-      token: token.trim(),
-      type: "signup",
-    })
+  const { error: verifyError } = await supabase.auth.verifyOtp({
+    email,
+    token: token.trim(),
+    type: "signup",
+  })
 
-    setLoading(false)
+  setLoading(false)
 
-    if (verifyError) {
-      setError(verifyError.message)
-      return
-    }
-
-    router.push("/")
-    router.refresh()
+  if (verifyError) {
+    setError(verifyError.message)
+    return
   }
+
+  // 🔥 REDIRECT HERE
+  router.push("/onboarding")
+  router.refresh()
+}
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40">
