@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { getExercise } from "@/lib/storage"
+import { supabase } from "@/utils/supabase/client"
 import { analyzeVideoForPose } from "@/lib/pose-analyzer"
 import { getExerciseConfig } from "@/lib/exercise-config"
 import type { LearnedExerciseTemplate } from "@/lib/exercise-state-learner"
@@ -20,6 +20,7 @@ import { ComparisonRecorder } from "@/components/comparison-recorder"
 export default function ComparePage() {
   const params = useParams()
   const [exercise, setExercise] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -39,8 +40,46 @@ export default function ComparePage() {
   }
 
   useEffect(() => {
-    const ex = getExercise(params.id as string)
-    if (ex) setExercise(ex)
+    async function fetchExercise() {
+      setIsLoading(true)
+      const { data, error } = await supabase
+        .from("exercise_assignments")
+        .select("id, name, exercise_type, video_url, template")
+        .eq("id", params.id as string)
+        .single()
+
+      if (!data || error) {
+        setIsLoading(false)
+        return
+      }
+
+      // Get a signed URL for the private storage bucket
+      let videoUrl = data.video_url
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        try {
+          const res = await fetch(`/api/exercises/signed-url?id=${data.id}`, {
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          })
+          if (res.ok) {
+            const { signedUrl } = await res.json()
+            videoUrl = signedUrl
+          }
+        } catch (e) {
+          console.error("Failed to get signed URL, falling back to stored URL:", e)
+        }
+      }
+
+      setExercise({
+        id: data.id,
+        name: data.name,
+        type: data.exercise_type,
+        videoUrl,
+        learnedTemplate: data.template,
+      })
+      setIsLoading(false)
+    }
+    fetchExercise()
   }, [params.id])
 
 
@@ -118,6 +157,19 @@ export default function ComparePage() {
     }
   }
 
+
+  if (isLoading) {
+    return (
+      <main className="min-h-screen bg-background p-8">
+        <div className="max-w-2xl mx-auto">
+          <Card className="p-8 text-center">
+            <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+            <p className="text-muted-foreground">Loading exercise...</p>
+          </Card>
+        </div>
+      </main>
+    )
+  }
 
   if (!exercise) {
     return (

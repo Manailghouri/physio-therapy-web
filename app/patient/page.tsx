@@ -6,6 +6,17 @@ import { Input } from "@/components/ui/input"
 import { supabase } from "@/utils/supabase/client"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { Dumbbell } from "lucide-react"
+
+interface ExerciseAssignment {
+  id: string
+  name: string
+  exercise_type: string
+  video_url: string
+  status: string | null
+  notes: string | null
+  assigned_at: string
+}
 
 export default function PatientPage() {
   const router = useRouter()
@@ -13,6 +24,7 @@ export default function PatientPage() {
   const [doctorName, setDoctorName] = useState<string | null>(null)
   const [hasDoctor, setHasDoctor] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [exercises, setExercises] = useState<ExerciseAssignment[]>([])
 
   // Link form state
   const [codeInput, setCodeInput] = useState("")
@@ -31,9 +43,18 @@ export default function PatientPage() {
       // Fetch patient's doctor_id
       const { data: patient } = await supabase
         .from("patients")
-        .select("doctor_id")
+        .select("*")
         .eq("id", session.user.id)
         .single()
+
+      // Fetch assigned exercises directly — no API needed
+      const { data: assignments } = await supabase
+        .from("exercise_assignments")
+        .select("id, name, exercise_type, video_url, status, notes, assigned_at")
+        .eq("patient_id", session.user.id)
+        .order("assigned_at", { ascending: false })
+
+      setExercises(assignments ?? [])
 
       if (patient?.doctor_id) {
         const { data: doctorUser } = await supabase
@@ -41,7 +62,6 @@ export default function PatientPage() {
           .select("first_name, last_name")
           .eq("id", patient.doctor_id)
           .single()
-          console.log(doctorUser)
 
         const name = doctorUser
           ? [doctorUser.first_name, doctorUser.last_name].filter(Boolean).join(" ")
@@ -112,10 +132,38 @@ export default function PatientPage() {
               <p className="text-sm text-muted-foreground mb-1">Linked to</p>
               <p className="text-lg font-semibold">{doctorName}</p>
             </div>
-            <p className="text-muted-foreground">
-              Your doctor hasn&apos;t added any exercises yet.
-            </p>
-            {/* TODO: list available exercises and link to /patient/compare/[id] */}
+            {exercises.length === 0 ? (
+              <p className="text-muted-foreground">
+                Your doctor hasn&apos;t added any exercises yet.
+              </p>
+            ) : (
+              <div>
+                <h2 className="text-lg font-semibold mb-3">Assigned Exercises</h2>
+                <div className="grid gap-3 max-w-2xl">
+                  {exercises.map((ex) => (
+                    <Link
+                      key={ex.id}
+                      href={`/patient/compare/${ex.id}`}
+                      className="flex items-center gap-4 rounded-lg border p-4 hover:bg-accent transition-colors"
+                    >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <Dumbbell className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium">{ex.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {ex.exercise_type.replace(/_/g, " ")}
+                          {ex.notes && ` · ${ex.notes}`}
+                        </p>
+                      </div>
+                      <div className="text-xs text-muted-foreground shrink-0">
+                        {new Date(ex.assigned_at).toLocaleDateString()}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="max-w-sm space-y-4">

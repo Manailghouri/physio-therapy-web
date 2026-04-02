@@ -191,6 +191,7 @@ export default function DoctorPage() {
           </DialogHeader>
           {assignPatient && (
             <RecordExercise
+              patientId={assignPatient.id}
               onComplete={() => setAssignPatient(null)}
               doneLabel="Done"
             />
