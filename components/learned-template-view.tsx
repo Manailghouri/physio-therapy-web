@@ -21,16 +21,6 @@ export function LearnedTemplateView({ template, onSaveTemplate }: LearnedTemplat
               Automatically detected <strong>{template.states.length} key states</strong> from your reference video
             </p>
           </div>
-          {/* <div className="text-right">
-            <div className="text-sm text-muted-foreground">Confidence</div>
-            <div className={`text-3xl font-bold ${
-              template.metadata.confidence >= 80 ? "text-green-600" :
-              template.metadata.confidence >= 60 ? "text-yellow-600" :
-              "text-red-600"
-            }`}>
-              {template.metadata.confidence}%
-            </div>
-          </div> */}
         </div>
         
         <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t">

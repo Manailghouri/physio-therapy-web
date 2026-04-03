@@ -1,3 +1,5 @@
+// replace with live stream view (test a normal video and treat it as livestreamed view)
+
 "use client"
 
 import { useRef, useState } from "react"

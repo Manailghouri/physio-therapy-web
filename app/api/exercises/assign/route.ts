@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
-    const { patient_id, name, exercise_type, video_path, video_url, template, notes } = body
+    const { patient_id, name, exercise_type, video_path, video_url, template, notes, allow_progression } = body
 
     // Validate required fields
     if (!patient_id || !name || !exercise_type || !video_path || !video_url || !template) {
@@ -71,6 +71,7 @@ export async function POST(req: Request) {
         video_url,
         template,
         notes: notes || null,
+        allow_progression: allow_progression ?? true,
       })
       .select("id")
       .single()

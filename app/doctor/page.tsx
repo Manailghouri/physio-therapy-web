@@ -50,6 +50,10 @@ interface ExerciseSession {
   angle_deviations: Record<string, number>
   duration_seconds: number
   completed_at: string
+  valid_reps: number
+  good_reps: number
+  progress_score: number
+  form_score: number
 }
 
 interface PatientData {
@@ -172,6 +176,10 @@ export default function DoctorDashboard() {
   const avgScore = totalSessions > 0
     ? Math.round(allSessions.reduce((s, x) => s + x.similarity_score, 0) / totalSessions)
     : 0
+  const sessionsWithProgress = allSessions.filter(s => s.progress_score > 0)
+  const avgProgress = sessionsWithProgress.length > 0
+    ? Math.round(sessionsWithProgress.reduce((s, x) => s + x.progress_score, 0) / sessionsWithProgress.length)
+    : 0
 
 
 
@@ -239,8 +247,8 @@ export default function DoctorDashboard() {
             bg="bg-green-50 dark:bg-green-950/30"
           />
           <StatCard
-            label="Avg Similarity"
-            value={totalSessions > 0 ? `${avgScore}%` : "—"}
+            label="Avg Progress"
+            value={sessionsWithProgress.length > 0 ? `${avgProgress}%` : totalSessions > 0 ? `${avgScore}% sim` : "—"}
             icon={<TrendingUp className="w-4 h-4" />}
             color="text-amber-600 dark:text-amber-400"
             bg="bg-amber-50 dark:bg-amber-950/30"
@@ -512,15 +520,21 @@ function ExerciseCard({
 }) {
   const config = getExerciseConfig(assignment.exercise_type)
   const sessionCount = sessions.length
+  const hasProgressData = sessions.some(s => s.progress_score > 0)
+
+  // Use progress_score if available, fall back to similarity_score
   const avgScore = sessionCount > 0
-    ? Math.round(sessions.reduce((s, x) => s + x.similarity_score, 0) / sessionCount)
+    ? hasProgressData
+      ? Math.round(sessions.filter(s => s.progress_score > 0).reduce((s, x) => s + x.progress_score, 0) / sessions.filter(s => s.progress_score > 0).length)
+      : Math.round(sessions.reduce((s, x) => s + x.similarity_score, 0) / sessionCount)
     : null
 
   // Trend: compare last session to average of previous sessions
   let trend: "up" | "down" | "stable" | null = null
   if (sessions.length >= 2) {
-    const recent = sessions[0].similarity_score
-    const prevAvg = sessions.slice(1).reduce((s, x) => s + x.similarity_score, 0) / (sessions.length - 1)
+    const scoreKey = hasProgressData ? "progress_score" : "similarity_score"
+    const recent = sessions[0][scoreKey]
+    const prevAvg = sessions.slice(1).reduce((s, x) => s + x[scoreKey], 0) / (sessions.length - 1)
     if (recent > prevAvg + 3) trend = "up"
     else if (recent < prevAvg - 3) trend = "down"
     else trend = "stable"
@@ -627,24 +641,58 @@ function SessionRow({ session }: { session: ExerciseSession }) {
         <span className="text-xs text-muted-foreground w-24 shrink-0">
           {format(new Date(session.completed_at), "MMM d, h:mm a")}
         </span>
-        <div className="flex-1 flex items-center gap-3">
-          {/* Similarity */}
-          <div className="flex items-center gap-1.5">
-            <div className="w-16 bg-muted rounded-full h-1.5 overflow-hidden">
-              <div
-                className={`h-full rounded-full ${getSimilarityBg(session.similarity_score)}`}
-                style={{ width: `${session.similarity_score}%` }}
-              />
+        <div className="flex-1 flex items-center gap-3 flex-wrap">
+          {/* Progress or Similarity */}
+          {session.progress_score > 0 ? (
+            <div className="flex items-center gap-1.5">
+              <div className="w-16 bg-muted rounded-full h-1.5 overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${getSimilarityBg(session.progress_score)}`}
+                  style={{ width: `${session.progress_score}%` }}
+                />
+              </div>
+              <span className={`text-xs font-semibold min-w-[2rem] ${getSimilarityColor(session.progress_score)}`}>
+                {session.progress_score}%
+              </span>
+              <span className="text-[10px] text-muted-foreground">progress</span>
             </div>
-            <span className={`text-xs font-semibold min-w-[2rem] ${getSimilarityColor(session.similarity_score)}`}>
-              {session.similarity_score}%
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <div className="w-16 bg-muted rounded-full h-1.5 overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${getSimilarityBg(session.similarity_score)}`}
+                  style={{ width: `${session.similarity_score}%` }}
+                />
+              </div>
+              <span className={`text-xs font-semibold min-w-[2rem] ${getSimilarityColor(session.similarity_score)}`}>
+                {session.similarity_score}%
+              </span>
+            </div>
+          )}
+          {/* Valid/Good Reps or fallback to old reps */}
+          {session.valid_reps > 0 ? (
+            <span className="text-xs text-muted-foreground">
+              <Target className="w-3 h-3 inline mr-0.5" />
+              {session.valid_reps} valid · {session.good_reps} good / {session.reps_completed}
             </span>
-          </div>
-          {/* Reps */}
-          <span className="text-xs text-muted-foreground">
-            <Target className="w-3 h-3 inline mr-0.5" />
-            {session.reps_completed}/{session.reps_expected} reps
-          </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              <Target className="w-3 h-3 inline mr-0.5" />
+              {session.reps_completed}/{session.reps_expected} reps
+            </span>
+          )}
+          {/* Form score badge */}
+          {session.form_score > 0 && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+              session.form_score >= 80
+                ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
+                : session.form_score >= 50
+                  ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400"
+                  : "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"
+            }`}>
+              Form: {session.form_score}%
+            </span>
+          )}
         </div>
         {showDetails
           ? <ChevronDown className="w-3 h-3 text-muted-foreground" />
@@ -654,6 +702,24 @@ function SessionRow({ session }: { session: ExerciseSession }) {
 
       {showDetails && (
         <div className="px-3 pb-3 space-y-2">
+          {/* Progress metrics */}
+          {session.progress_score > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400">
+                Progress: {session.progress_score}%
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400">
+                Form: {session.form_score}%
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400">
+                Valid: {session.valid_reps} · Good: {session.good_reps}
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-700 dark:bg-gray-950/40 dark:text-gray-400">
+                Similarity: {session.similarity_score}%
+              </span>
+            </div>
+          )}
+
           {/* State Matches */}
           {session.state_matches && Object.keys(session.state_matches).length > 0 && (
             <div>

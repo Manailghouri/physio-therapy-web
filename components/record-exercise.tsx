@@ -11,6 +11,7 @@ import { uploadVideoToStorage } from "@/lib/storage"
 import { supabase } from "@/utils/supabase/client"
 import { analyzeVideoForPose, type PoseAnalysisResult } from "@/lib/pose-analyzer"
 import { EXERCISE_CONFIGS, getExerciseConfig } from "@/lib/exercise-config"
+import { Switch } from "@/components/ui/switch"
 import { formatAngleName } from "@/lib/utils"
 
 interface RecordExerciseProps {
@@ -34,6 +35,7 @@ export function RecordExercise({
   const [exerciseName, setExerciseName] = useState(defaultName)
   const [exerciseType, setExerciseType] = useState(defaultType)
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
+  const [allowProgression, setAllowProgression] = useState(true)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisResult, setAnalysisResult] = useState<PoseAnalysisResult | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -98,6 +100,7 @@ export function RecordExercise({
             video_path: videoPath,
             video_url: videoUrl,
             template: result.learnedTemplate,
+            allow_progression: allowProgression,
           }),
         })
 
@@ -155,6 +158,22 @@ export function RecordExercise({
                 placeholder="e.g., Morning knee extension"
                 value={exerciseName}
                 onChange={(e) => setExerciseName(e.target.value)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <label htmlFor="allow-progression" className="text-sm font-medium">
+                  Allow progression
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Patient can progress beyond this reference toward the ideal range of motion
+                </p>
+              </div>
+              <Switch
+                id="allow-progression"
+                checked={allowProgression}
+                onCheckedChange={setAllowProgression}
               />
             </div>
           </div>

@@ -38,6 +38,10 @@ export async function POST(req: Request) {
       state_matches,
       angle_deviations,
       duration_seconds,
+      valid_reps,
+      good_reps,
+      progress_score,
+      form_score,
     } = body
 
     if (!assignment_id || similarity_score === undefined) {
@@ -58,6 +62,10 @@ export async function POST(req: Request) {
         state_matches: state_matches || {},
         angle_deviations: angle_deviations || {},
         duration_seconds: duration_seconds || 0,
+        valid_reps: valid_reps ?? 0,
+        good_reps: good_reps ?? 0,
+        progress_score: progress_score ?? 0,
+        form_score: form_score ?? 0,
       })
       .select("id, completed_at")
       .single()
