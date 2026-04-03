@@ -16,7 +16,7 @@ interface Assignment {
   id: string
   name: string
   exercise_type: string
-  created_at: string
+  assigned_at: string
 }
 
 interface SessionSummary {
@@ -33,11 +33,10 @@ export default function PatientPage() {
   const [hasDoctor, setHasDoctor] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  // Exercises
+
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [sessionSummaries, setSessionSummaries] = useState<Map<string, SessionSummary>>(new Map())
 
-  // Link form state
   const [codeInput, setCodeInput] = useState("")
   const [linkError, setLinkError] = useState("")
   const [linking, setLinking] = useState(false)
@@ -58,15 +57,6 @@ export default function PatientPage() {
         .eq("id", session.user.id)
         .single()
 
-      // Fetch assigned exercises directly — no API needed
-      const { data: assignments } = await supabase
-        .from("exercise_assignments")
-        .select("id, name, exercise_type, video_url, status, notes, assigned_at")
-        .eq("patient_id", session.user.id)
-        .order("assigned_at", { ascending: false })
-
-      setExercises(assignments ?? [])
-
       if (patient?.doctor_id) {
         const { data: doctorUser } = await supabase
           .from("users")
@@ -80,17 +70,15 @@ export default function PatientPage() {
         setDoctorName(name || "Your Doctor")
         setHasDoctor(true)
 
-        // Fetch assigned exercises
         const { data: exerciseRows } = await supabase
           .from("exercise_assignments")
-          .select("id, name, exercise_type, created_at")
+          .select("id, name, exercise_type, assigned_at")
           .eq("patient_id", session.user.id)
-          .order("created_at", { ascending: false })
+          .order("assigned_at", { ascending: false })
 
         if (exerciseRows && exerciseRows.length > 0) {
           setAssignments(exerciseRows)
 
-          // Fetch session summaries for these assignments
           const { data: sessionRows } = await supabase
             .from("exercise_sessions")
             .select("assignment_id, similarity_score, completed_at")

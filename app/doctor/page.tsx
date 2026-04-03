@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -12,84 +12,140 @@ import {
 import { RecordExercise } from "@/components/record-exercise"
 import { supabase } from "@/utils/supabase/client"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
+import { getExerciseConfig } from "@/lib/exercise-config"
+import { formatAngleName, getSimilarityColor, getSimilarityBg } from "@/lib/utils"
+import {
+  Users, Dumbbell, Activity, TrendingUp, Copy, Check,
+  ChevronDown, ChevronRight, Plus, Loader2, Clock,
+  Calendar, Target, User,
+} from "lucide-react"
+import { format, formatDistanceToNow } from "date-fns"
 
-interface LinkedPatient {
+// ── Types ──────────────────────────────────────────────────────
+
+interface PatientInfo {
   id: string
   email: string
   firstName: string | null
   lastName: string | null
 }
 
-export default function DoctorPage() {
+interface ExerciseAssignment {
+  id: string
+  name: string
+  exercise_type: string
+  video_url: string
+  patient_id: string
+  assigned_at: string
+}
+
+interface ExerciseSession {
+  id: string
+  patient_id: string
+  assignment_id: string
+  similarity_score: number
+  reps_completed: number
+  reps_expected: number
+  state_matches: Record<string, number>
+  angle_deviations: Record<string, number>
+  duration_seconds: number
+  completed_at: string
+}
+
+interface PatientData {
+  info: PatientInfo
+  assignments: ExerciseAssignment[]
+  sessions: ExerciseSession[]
+}
+
+
+
+export default function DoctorDashboard() {
   const router = useRouter()
   const [email, setEmail] = useState<string | null>(null)
-  const [userId, setUserId] = useState<string | null>(null)
   const [doctorCode, setDoctorCode] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [patients, setPatients] = useState<LinkedPatient[]>([])
-  const [patientsLoading, setPatientsLoading] = useState(true)
-  const [assignPatient, setAssignPatient] = useState<LinkedPatient | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    async function loadDoctor() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.replace("/login")
-        return
-      }
-      setEmail(session.user.email ?? null)
+  // Data
+  const [patients, setPatients] = useState<PatientData[]>([])
+  const [expandedPatient, setExpandedPatient] = useState<string | null>(null)
+  const [expandedExercise, setExpandedExercise] = useState<string | null>(null)
+
+  // Dialog-based assign exercise
+  const [assignPatient, setAssignPatient] = useState<PatientInfo | null>(null)
+
+  const loadDashboard = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      router.replace("/login")
+      return
+    }
+
+    setEmail(session.user.email ?? null)
 
     // Fetch doctor code
-    const { data: doctor } = await supabase
+    const { data: doctor, error } = await supabase
       .from("doctors")
       .select("doctor_code")
       .eq("id", session.user.id)
       .single()
 
-      if (error) {
-        console.error("[doctor] Failed to fetch doctor_code:", error.message, error.code)
-      }
-
-      setDoctorCode(data?.doctor_code ?? null)
-
-      const { data: patientRows, error: patientsErr } = await supabase
-        .from("patients")
-        .select("id")
-        .eq("doctor_id", session.user.id)
-
-      console.log(patientRows)
-
-      if (patientsErr) {
-        console.error("[doctor] Failed to fetch patients:", patientsErr.message)
-        setPatientsLoading(false)
-        return
-      }
-
-      if (patientRows && patientRows.length > 0) {
-        const ids = patientRows.map((p) => p.id)
-        const { data: userRows, error: usersErr } = await supabase
-          .from("users")
-          .select("id, email, first_name, last_name")
-          .in("id", ids)
-
-        if (usersErr) {
-          console.error("[doctor] Failed to fetch patient users:", usersErr.message)
-        }
-
-        setPatients(
-          (userRows ?? []).map((u) => ({
-            id: u.id,
-            email: u.email ?? "",
-            firstName: u.first_name ?? null,
-            lastName: u.last_name ?? null,
-          }))
-        )
-      }
-
-      setPatientsLoading(false)
+    if (error) {
+      console.error("[doctor] Failed to fetch doctor_code:", error.message, error.code)
     }
-    loadDoctor()
+    setDoctorCode(doctor?.doctor_code ?? null)
+
+    const { data: patientRows } = await supabase
+      .from("patients")
+      .select("id")
+      .eq("doctor_id", session.user.id)
+
+    if (!patientRows || patientRows.length === 0) {
+      setPatients([])
+      setLoading(false)
+      return
+    }
+
+    const patientIds = patientRows.map(p => p.id)
+
+    
+    const { data: userRows } = await supabase
+      .from("users")
+      .select("id, first_name, last_name, email")
+      .in("id", patientIds)
+
+    
+    const { data: assignmentRows } = await supabase
+      .from("exercise_assignments")
+      .select("id, name, exercise_type, video_url, patient_id, assigned_at")
+      .eq("doctor_id", session.user.id)
+      .order("assigned_at", { ascending: false })
+
+    
+    const { data: sessionRows } = await supabase
+      .from("exercise_sessions")
+      .select("*")
+      .in("patient_id", patientIds)
+      .order("completed_at", { ascending: false })
+
+    
+    const assembled: PatientData[] = patientIds.map(pid => {
+      const userInfo = userRows?.find(u => u.id === pid)
+      return {
+        info: {
+          id: pid,
+          email: userInfo?.email ?? "Unknown",
+          firstName: userInfo?.first_name ?? null,
+          lastName: userInfo?.last_name ?? null,
+        },
+        assignments: (assignmentRows ?? []).filter(a => a.patient_id === pid),
+        sessions: (sessionRows ?? []).filter(s => s.patient_id === pid),
+      }
+    })
+
+    setPatients(assembled)
+    setLoading(false)
   }, [router])
 
   useEffect(() => {
@@ -108,7 +164,6 @@ export default function DoctorPage() {
     router.push("/login")
   }
 
-  // ── Stats ─────────────────────────────────────────────────────
 
   const totalPatients = patients.length
   const totalAssignments = patients.reduce((s, p) => s + p.assignments.length, 0)
@@ -118,7 +173,7 @@ export default function DoctorPage() {
     ? Math.round(allSessions.reduce((s, x) => s + x.similarity_score, 0) / totalSessions)
     : 0
 
-  // ── Render ────────────────────────────────────────────────────
+
 
   if (loading) {
     return (
@@ -128,23 +183,6 @@ export default function DoctorPage() {
           <p className="text-muted-foreground">Loading dashboard...</p>
         </div>
       </div>
-    )
-  }
-
-  // If assigning exercise, show that view
-  if (assigningFor) {
-    const patient = patients.find(p => p.info.id === assigningFor)
-    return (
-      <AssignExerciseView
-        patientName={getPatientName(patient?.info)}
-        patientId={assigningFor}
-        accessToken={accessToken!}
-        onBack={() => setAssigningFor(null)}
-        onAssigned={() => {
-          setAssigningFor(null)
-          loadDashboard()
-        }}
-      />
     )
   }
 
@@ -246,22 +284,48 @@ export default function DoctorPage() {
                   onToggleExercise={(id) =>
                     setExpandedExercise(prev => prev === id ? null : id)
                   }
-                  onAssignExercise={() => setAssigningFor(patient.info.id)}
+                  onAssignExercise={() => setAssignPatient(patient.info)}
                 />
               ))}
             </div>
           )}
         </div>
       </main>
+
+      {/* Assign Exercise Dialog */}
+      <Dialog
+        open={assignPatient !== null}
+        onOpenChange={(open) => { if (!open) setAssignPatient(null) }}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Assign Exercise to{" "}
+              {assignPatient
+                ? getPatientName(assignPatient)
+                : ""}
+            </DialogTitle>
+          </DialogHeader>
+          {assignPatient && (
+            <RecordExercise
+              patientId={assignPatient.id}
+              onComplete={() => {
+                setAssignPatient(null)
+                loadDashboard()
+              }}
+              doneLabel="Done"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
 // ── Helper ──────────────────────────────────────────────────────
 
-function getPatientName(info?: PatientInfo): string {
-  if (!info) return "Unknown"
-  const name = [info.first_name, info.last_name].filter(Boolean).join(" ")
+function getPatientName(info: PatientInfo): string {
+  const name = [info.firstName, info.lastName].filter(Boolean).join(" ")
   return name || info.email
 }
 
@@ -291,7 +355,6 @@ function StatCard({
   )
 }
 
-// ── PatientCard ─────────────────────────────────────────────────
 
 function PatientCard({
   patient,
@@ -423,7 +486,7 @@ function PatientCard({
   )
 }
 
-// ── MiniStat ────────────────────────────────────────────────────
+
 
 function MiniStat({ label, value }: { label: string; value: string | number }) {
   return (
@@ -434,7 +497,7 @@ function MiniStat({ label, value }: { label: string; value: string | number }) {
   )
 }
 
-// ── ExerciseCard ────────────────────────────────────────────────
+
 
 function ExerciseCard({
   assignment,
@@ -448,7 +511,6 @@ function ExerciseCard({
   onToggle: () => void
 }) {
   const config = getExerciseConfig(assignment.exercise_type)
-  const latestSession = sessions[0]
   const sessionCount = sessions.length
   const avgScore = sessionCount > 0
     ? Math.round(sessions.reduce((s, x) => s + x.similarity_score, 0) / sessionCount)
@@ -479,8 +541,8 @@ function ExerciseCard({
           <p className="font-medium text-sm truncate">{assignment.name}</p>
           <p className="text-xs text-muted-foreground">
             {config?.name ?? assignment.exercise_type}
-            {assignment.created_at && (
-              <> &middot; Assigned {format(new Date(assignment.created_at), "MMM d")}</>
+            {assignment.assigned_at && (
+              <> &middot; Assigned {format(new Date(assignment.assigned_at), "MMM d")}</>
             )}
           </p>
         </div>
@@ -631,7 +693,7 @@ function SessionRow({ session }: { session: ExerciseSession }) {
                           : "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"
                     }`}
                   >
-                    {formatAngleName(angle)}: {"\u00B1"}{Math.round(deviation)}{"\u00B0"}
+                    {formatAngleName(angle)}: ±{Math.round(deviation)}°
                   </span>
                 ))}
               </div>
@@ -646,220 +708,6 @@ function SessionRow({ session }: { session: ExerciseSession }) {
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-// ── AssignExerciseView ──────────────────────────────────────────
-
-function AssignExerciseView({
-  patientName,
-  patientId,
-  accessToken,
-  onBack,
-  onAssigned,
-}: {
-  patientName: string
-  patientId: string
-  accessToken: string
-  onBack: () => void
-  onAssigned: () => void
-}) {
-  const [exerciseType, setExerciseType] = useState(EXERCISE_CONFIGS[0].id)
-  const [exerciseName, setExerciseName] = useState("")
-  const [videoFile, setVideoFile] = useState<File | null>(null)
-  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null)
-  const [step, setStep] = useState<"form" | "analyzing" | "saving" | "done">("form")
-  const [error, setError] = useState<string | null>(null)
-  const [analysisProgress, setAnalysisProgress] = useState("")
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const config = getExerciseConfig(exerciseType)
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file && file.type.startsWith("video/")) {
-      setVideoFile(file)
-      setVideoPreviewUrl(URL.createObjectURL(file))
-      setError(null)
-    } else {
-      setError("Please upload a valid video file")
-    }
-  }
-
-  const handleAssign = async () => {
-    if (!videoFile) return
-
-    setError(null)
-    setStep("analyzing")
-    setAnalysisProgress("Analyzing video with MediaPipe...")
-
-    try {
-      // 1. Analyze the video
-      const exerciseConfig = getExerciseConfig(exerciseType)
-      const anglesOfInterest = exerciseConfig?.anglesOfInterest
-      const name = exerciseName.trim() || exerciseConfig?.name || "Exercise"
-
-      const result = await analyzeVideoForPose(
-        videoFile,
-        anglesOfInterest,
-        { name, type: exerciseType }
-      )
-
-      setAnalysisProgress("Uploading video to storage...")
-
-      // 2. Upload video to Supabase Storage
-      const id = Date.now().toString()
-      const fileName = `${id}_${name.replace(/[^a-z0-9]/gi, "_").toLowerCase()}.webm`
-      const filePath = `${exerciseType}/${fileName}`
-
-      const { error: uploadErr } = await supabase.storage
-        .from("reference-videos")
-        .upload(filePath, videoFile, {
-          contentType: videoFile.type || "video/webm",
-          cacheControl: "3600",
-          upsert: false,
-        })
-
-      if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`)
-
-      const { data: urlData } = supabase.storage
-        .from("reference-videos")
-        .getPublicUrl(filePath)
-
-      if (!urlData?.publicUrl) throw new Error("Failed to get video URL")
-
-      setStep("saving")
-      setAnalysisProgress("Saving exercise assignment...")
-
-      // 3. Save assignment via API
-      const res = await fetch("/api/doctor/assign-exercise", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          patient_id: patientId,
-          name,
-          exercise_type: exerciseType,
-          video_url: urlData.publicUrl,
-          template: result.learnedTemplate || null,
-        }),
-      })
-
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Failed to assign exercise")
-
-      setStep("done")
-      setTimeout(onAssigned, 1200)
-    } catch (err) {
-      console.error("Error assigning exercise:", err)
-      setError(err instanceof Error ? err.message : "An unexpected error occurred")
-      setStep("form")
-    }
-  }
-
-  return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b">
-        <div className="flex items-center gap-3 px-6 py-3">
-          <Button variant="ghost" size="sm" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4 mr-1" /> Back
-          </Button>
-          <div>
-            <h1 className="text-lg font-semibold">Assign Exercise</h1>
-            <p className="text-xs text-muted-foreground">For {patientName}</p>
-          </div>
-        </div>
-      </div>
-      <div className="p-8">
-        {doctorCode && (
-          <div className="space-y-6">
-            <div className="rounded-lg border p-6 max-w-sm">
-              <p className="text-sm text-muted-foreground mb-1">Your doctor code</p>
-              <p className="text-3xl font-mono font-bold tracking-widest">{doctorCode}</p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-3"
-                onClick={handleCopy}
-              >
-                {copied ? "Copied!" : "Copy Code"}
-              </Button>
-              <p className="text-sm text-muted-foreground mt-3">
-                Share this code with your patients so they can link to you.
-              </p>
-            </div>
-
-            <Link href="/doctor/record">
-              <Button size="lg">Record Exercise</Button>
-            </Link>
-
-            {/* Linked Patients */}
-            <div>
-              <h2 className="text-lg font-semibold mb-3">Your Patients</h2>
-              {patientsLoading ? (
-                <p className="text-sm text-muted-foreground">Loading patients...</p>
-              ) : patients.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No patients linked yet. Share your doctor code to get started.
-                </p>
-              ) : (
-                <div className="space-y-2 max-w-md">
-                  {patients.map((p) => {
-                    const name = [p.firstName, p.lastName].filter(Boolean).join(" ")
-                    return (
-                      <Card key={p.id} className="flex items-center justify-between p-4">
-                        <div>
-                          {name && <p className="font-medium">{name}</p>}
-                          <p className={name ? "text-sm text-muted-foreground" : "font-medium"}>
-                            {p.email}
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setAssignPatient(p)}
-                        >
-                          Assign Exercise
-                        </Button>
-                      </Card>
-                    )
-                  })}
-                  <p className="text-xs text-muted-foreground pt-1">
-                    {patients.length} patient{patients.length !== 1 && "s"} linked
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Assign Exercise Dialog */}
-      <Dialog
-        open={assignPatient !== null}
-        onOpenChange={(open) => { if (!open) setAssignPatient(null) }}
-      >
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              Assign Exercise to{" "}
-              {assignPatient
-                ? [assignPatient.firstName, assignPatient.lastName].filter(Boolean).join(" ") || assignPatient.email
-                : ""}
-            </DialogTitle>
-          </DialogHeader>
-          {assignPatient && (
-            <RecordExercise
-              patientId={assignPatient.id}
-              onComplete={() => setAssignPatient(null)}
-              doneLabel="Done"
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
