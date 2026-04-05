@@ -2,20 +2,28 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { supabase } from "@/utils/supabase/client"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Dumbbell } from "lucide-react"
+import { getExerciseConfig } from "@/lib/exercise-config"
+import { formatDistanceToNow } from "date-fns"
+import { Dumbbell, Play, Loader2 } from "lucide-react"
+import { getSimilarityColor } from "@/lib/utils"
 
-interface ExerciseAssignment {
+interface Assignment {
   id: string
   name: string
   exercise_type: string
-  video_url: string
-  status: string | null
-  notes: string | null
   assigned_at: string
+}
+
+interface SessionSummary {
+  assignment_id: string
+  count: number
+  avg_score: number
+  last_completed: string
 }
 
 export default function PatientPage() {
@@ -24,9 +32,11 @@ export default function PatientPage() {
   const [doctorName, setDoctorName] = useState<string | null>(null)
   const [hasDoctor, setHasDoctor] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [exercises, setExercises] = useState<ExerciseAssignment[]>([])
 
-  // Link form state
+
+  const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [sessionSummaries, setSessionSummaries] = useState<Map<string, SessionSummary>>(new Map())
+
   const [codeInput, setCodeInput] = useState("")
   const [linkError, setLinkError] = useState("")
   const [linking, setLinking] = useState(false)
@@ -47,15 +57,6 @@ export default function PatientPage() {
         .eq("id", session.user.id)
         .single()
 
-      // Fetch assigned exercises directly — no API needed
-      const { data: assignments } = await supabase
-        .from("exercise_assignments")
-        .select("id, name, exercise_type, video_url, status, notes, assigned_at")
-        .eq("patient_id", session.user.id)
-        .order("assigned_at", { ascending: false })
-
-      setExercises(assignments ?? [])
-
       if (patient?.doctor_id) {
         const { data: doctorUser } = await supabase
           .from("users")
@@ -68,6 +69,42 @@ export default function PatientPage() {
           : ""
         setDoctorName(name || "Your Doctor")
         setHasDoctor(true)
+
+        const { data: exerciseRows } = await supabase
+          .from("exercise_assignments")
+          .select("id, name, exercise_type, assigned_at")
+          .eq("patient_id", session.user.id)
+          .order("assigned_at", { ascending: false })
+
+        if (exerciseRows && exerciseRows.length > 0) {
+          setAssignments(exerciseRows)
+
+          const { data: sessionRows } = await supabase
+            .from("exercise_sessions")
+            .select("assignment_id, similarity_score, completed_at")
+            .eq("patient_id", session.user.id)
+            .order("completed_at", { ascending: false })
+
+          if (sessionRows) {
+            const summaryMap = new Map<string, SessionSummary>()
+            for (const s of sessionRows) {
+              const existing = summaryMap.get(s.assignment_id)
+              if (existing) {
+                existing.count++
+                existing.avg_score =
+                  (existing.avg_score * (existing.count - 1) + s.similarity_score) / existing.count
+              } else {
+                summaryMap.set(s.assignment_id, {
+                  assignment_id: s.assignment_id,
+                  count: 1,
+                  avg_score: s.similarity_score,
+                  last_completed: s.completed_at,
+                })
+              }
+            }
+            setSessionSummaries(summaryMap)
+          }
+        }
       }
 
       setLoading(false)
@@ -117,57 +154,114 @@ export default function PatientPage() {
   return (
     <div className="min-h-screen">
       <div className="flex items-center justify-between border-b px-6 py-3">
-        <h1 className="text-lg font-semibold">Patient Dashboard</h1>
+        <h1 className="text-lg font-semibold">My Exercises</h1>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground">{email}</span>
+          <span className="text-sm text-muted-foreground hidden sm:inline">{email}</span>
           <Button variant="outline" size="sm" onClick={handleSignOut}>Sign Out</Button>
         </div>
       </div>
-      <div className="p-8">
+
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
         {loading ? (
-          <p className="text-muted-foreground">Loading...</p>
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          </div>
         ) : hasDoctor ? (
-          <div className="space-y-4">
-            <div className="rounded-lg border p-6 max-w-md">
-              <p className="text-sm text-muted-foreground mb-1">Linked to</p>
-              <p className="text-lg font-semibold">{doctorName}</p>
-            </div>
-            {exercises.length === 0 ? (
-              <p className="text-muted-foreground">
-                Your doctor hasn&apos;t added any exercises yet.
-              </p>
-            ) : (
+          <div className="space-y-6">
+            {/* Doctor Info */}
+            <div className="flex items-center gap-3 p-4 rounded-lg border bg-muted/30">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="text-sm font-bold text-primary">
+                  {doctorName?.charAt(0)?.toUpperCase() || "D"}
+                </span>
+              </div>
               <div>
-                <h2 className="text-lg font-semibold mb-3">Assigned Exercises</h2>
-                <div className="grid gap-3 max-w-2xl">
-                  {exercises.map((ex) => (
+                <p className="text-sm text-muted-foreground">Your Doctor</p>
+                <p className="font-semibold">{doctorName}</p>
+              </div>
+            </div>
+
+            {/* Assigned Exercises */}
+            {assignments.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Dumbbell className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-muted-foreground">
+                    Your doctor hasn&apos;t assigned any exercises yet.
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Check back later or ask your doctor to assign exercises.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  Your Exercises ({assignments.length})
+                </h2>
+                {assignments.map(assignment => {
+                  const config = getExerciseConfig(assignment.exercise_type)
+                  const summary = sessionSummaries.get(assignment.id)
+
+                  return (
                     <Link
-                      key={ex.id}
-                      href={`/patient/compare/${ex.id}`}
-                      className="flex items-center gap-4 rounded-lg border p-4 hover:bg-accent transition-colors"
+                      key={assignment.id}
+                      href={`/patient/compare/${assignment.id}`}
                     >
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                        <Dumbbell className="h-5 w-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium">{ex.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {ex.exercise_type.replace(/_/g, " ")}
-                          {ex.notes && ` · ${ex.notes}`}
-                        </p>
-                      </div>
-                      <div className="text-xs text-muted-foreground shrink-0">
-                        {new Date(ex.assigned_at).toLocaleDateString()}
-                      </div>
+                      <Card className="hover:border-primary/50 transition-colors cursor-pointer">
+                        <CardContent className="flex items-center gap-4 py-4">
+                          {/* Icon */}
+                          <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                            <Dumbbell className="w-6 h-6 text-primary" />
+                          </div>
+
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold truncate">{assignment.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {config?.name ?? assignment.exercise_type}
+                            </p>
+                            {summary ? (
+                              <div className="flex items-center gap-3 mt-1">
+                                <span className="text-xs text-muted-foreground">
+                                  {summary.count} session{summary.count !== 1 ? "s" : ""}
+                                </span>
+                                <span className={`text-xs font-semibold ${getSimilarityColor(summary.avg_score)}`}>
+                                  Avg: {Math.round(summary.avg_score)}%
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  Last: {formatDistanceToNow(new Date(summary.last_completed), { addSuffix: true })}
+                                </span>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Not started yet
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Score badge + arrow */}
+                          <div className="flex items-center gap-2">
+                            {summary && (
+                              <div className="text-right">
+                                <p className={`text-lg font-bold ${getSimilarityColor(summary.avg_score)}`}>
+                                  {Math.round(summary.avg_score)}%
+                                </p>
+                              </div>
+                            )}
+                            <Play className="w-5 h-5 text-primary shrink-0" />
+                          </div>
+                        </CardContent>
+                      </Card>
                     </Link>
-                  ))}
-                </div>
+                  )
+                })}
               </div>
             )}
           </div>
         ) : (
-          <div className="max-w-sm space-y-4">
-            <div>
+          <div className="max-w-sm mx-auto space-y-4 pt-12">
+            <div className="text-center">
               <h2 className="text-lg font-semibold">Link to your Doctor</h2>
               <p className="text-sm text-muted-foreground mt-1">
                 Enter the code your doctor gave you to get started.
