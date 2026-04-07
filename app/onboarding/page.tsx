@@ -28,9 +28,7 @@ export default function Onboarding() {
         .eq("id", user.id)
         .single();
 
-      if (error) {
-        console.error("Role fetch error:", error);
-      }
+      if (error) console.error(error);
 
       setRole(data?.role);
     };
@@ -51,7 +49,6 @@ export default function Onboarding() {
       return;
     }
 
-    // 🔹 Update users table
     const { error: userError } = await supabase
       .from("users")
       .update({
@@ -60,35 +57,26 @@ export default function Onboarding() {
       })
       .eq("id", user.id);
 
-    if (userError) {
-      console.error("User update error:", userError);
-    }
+    if (userError) console.error(userError);
 
-    // 🔹 Update role table
     if (role === "doctor") {
-      const { data, error } = await supabase
+      await supabase
         .from("doctors")
         .update({
           education: form.education,
           specialization: form.specialization,
           experience: Number(form.experience),
         })
-        .eq("id", user.id)
-        .select();
-
-      console.log("Doctor update:", data, error);
+        .eq("id", user.id);
     } else if (role === "patient") {
-      const { data, error } = await supabase
+      await supabase
         .from("patients")
         .update({
           age: Number(form.age),
           disease: form.disease,
           gender: form.gender,
         })
-        .eq("id", user.id)
-        .select();
-
-      console.log("Patient update:", data, error);
+        .eq("id", user.id);
     }
 
     setLoading(false);
@@ -96,102 +84,97 @@ export default function Onboarding() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40">
-      <Card className="w-full max-w-md shadow-xl rounded-2xl">
-        <CardHeader>
-          <CardTitle className="text-center text-2xl font-semibold">
-            Complete Your Profile
-          </CardTitle>
-          <p className="text-center text-sm text-muted-foreground">
-            Please fill in your details to continue
+    <div className="min-h-screen flex items-center justify-center bg-muted/40 px-4">
+
+      {/* MAIN CONTAINER */}
+      <div className="w-full max-w-md space-y-6">
+
+        {/* HEADING */}
+        <div className="text-center space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight">
+            Physiotherapy Guidance System
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Smart exercise tracking & recovery support
           </p>
-        </CardHeader>
+        </div>
 
-        <CardContent className="space-y-5">
-          {/* FIRST NAME */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">First Name</label>
-            <Input
-              placeholder="Enter your first name"
-              onChange={(e) =>
-                setForm({ ...form, first_name: e.target.value })
-              }
-            />
-          </div>
+        {/* CARD */}
+        <Card className="shadow-xl rounded-2xl">
+          <CardHeader>
+            <CardTitle className="text-center text-2xl font-semibold">
+              Complete Your Profile
+            </CardTitle>
+            <p className="text-center text-sm text-muted-foreground">
+              Please fill in your details to continue
+            </p>
+          </CardHeader>
 
-          {/* LAST NAME */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Last Name</label>
-            <Input
-              placeholder="Enter your last name"
-              onChange={(e) =>
-                setForm({ ...form, last_name: e.target.value })
-              }
-            />
-          </div>
+          <CardContent className="space-y-5">
 
-          {/* DOCTOR FORM */}
-          {role === "doctor" && (
-            <>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Education</label>
+            {/* FIRST NAME */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">First Name</label>
+              <Input
+                placeholder="Enter your first name"
+                onChange={(e) =>
+                  setForm({ ...form, first_name: e.target.value })
+                }
+              />
+            </div>
+
+            {/* LAST NAME */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Last Name</label>
+              <Input
+                placeholder="Enter your last name"
+                onChange={(e) =>
+                  setForm({ ...form, last_name: e.target.value })
+                }
+              />
+            </div>
+
+            {/* DOCTOR FORM */}
+            {role === "doctor" && (
+              <>
                 <Input
-                  placeholder="e.g. MBBS, FCPS"
+                  placeholder="Education"
                   onChange={(e) =>
                     setForm({ ...form, education: e.target.value })
                   }
                 />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Specialization</label>
                 <Input
-                  placeholder="e.g. Physiotherapy"
+                  placeholder="Specialization"
                   onChange={(e) =>
                     setForm({ ...form, specialization: e.target.value })
                   }
                 />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Experience</label>
                 <Input
                   type="number"
-                  placeholder="Years of experience"
+                  placeholder="Experience"
                   onChange={(e) =>
                     setForm({ ...form, experience: e.target.value })
                   }
                 />
-              </div>
-            </>
-          )}
+              </>
+            )}
 
-          {/* PATIENT FORM */}
-          {role === "patient" && (
-            <>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Age</label>
+            {/* PATIENT FORM */}
+            {role === "patient" && (
+              <>
                 <Input
                   type="number"
-                  placeholder="Enter your age"
+                  placeholder="Age"
                   onChange={(e) =>
                     setForm({ ...form, age: e.target.value })
                   }
                 />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Disease / Problem</label>
                 <Input
-                  placeholder="Describe your issue"
+                  placeholder="Disease / Problem"
                   onChange={(e) =>
                     setForm({ ...form, disease: e.target.value })
                   }
                 />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Gender</label>
                 <select
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   onChange={(e) =>
@@ -203,26 +186,27 @@ export default function Onboarding() {
                   <option value="female">Female</option>
                   <option value="other">Other</option>
                 </select>
-              </div>
-            </>
-          )}
+              </>
+            )}
 
-          {!role && (
-            <p className="text-center text-sm text-muted-foreground">
-              Loading...
-            </p>
-          )}
+            {!role && (
+              <p className="text-center text-sm text-muted-foreground">
+                Loading...
+              </p>
+            )}
 
-          {/* BUTTON */}
-          <Button
-            onClick={handleSubmit}
-            disabled={loading}
-            className="w-full rounded-xl"
-          >
-            {loading ? "Saving..." : "Continue"}
-          </Button>
-        </CardContent>
-      </Card>
+            {/* BUTTON */}
+            <Button
+              onClick={handleSubmit}
+              disabled={loading}
+              className="w-full rounded-xl"
+            >
+              {loading ? "Saving..." : "Continue"}
+            </Button>
+
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
