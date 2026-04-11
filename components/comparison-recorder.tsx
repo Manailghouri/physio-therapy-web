@@ -21,6 +21,7 @@ import {
 
 import { OneEuroFilter } from "@/lib/filters"
 import { LearnedExerciseTemplate } from "@/lib/exercise-state-learner"
+import { RealtimeFeedbackEngine } from "@/lib/feedback-generator"
 
 
 // =============================
@@ -123,9 +124,10 @@ export function ComparisonRecorder({
   const poseRef = useRef<PoseLandmarker | null>(null)
   const rafRef = useRef<number | null>(null)
   const learnedTemplateRef = useRef<LearnedExerciseTemplate | null>(null)
+  const feedbackEngineRef = useRef<RealtimeFeedbackEngine | null>(null)
 
 
- 
+
   //-------- AUDIO SYSTEM (SMART FEEDBACK)---------
 
   const lastAudioTimeRef = useRef<number>(0)     // cooldown tracker
@@ -1180,9 +1182,8 @@ const startPoseLoop = () => {
           }
         }
       
-// =============================
+
 // PRIMARY ANGLE TRACKING
-// =============================
           const val = smoothedAngles[primary]
           if (val !== undefined) {
             primaryAngleHistoryRef.current.push({ t: ts / 1000, value: val })
@@ -1259,19 +1260,22 @@ const startPoseLoop = () => {
           }
         }
 
+        let frameFormScore = 0
+        let frameRepError: ReturnType<typeof calculateRepError> = null
+        let frameThresholdStatus: "below" | "valid" | "good" | "rest" = "rest"
         if (learnedTemplateRef.current && anglesOfInterest && anglesOfInterest.length > 0) {
-          const score = computeFormScore(smoothedAngles, learnedTemplateRef.current, anglesOfInterest)
-          setFormScore(Math.round(score))
-          
-          const realtimeError = calculateRepError(
+          frameFormScore = computeFormScore(smoothedAngles, learnedTemplateRef.current, anglesOfInterest)
+          setFormScore(Math.round(frameFormScore))
+
+          frameRepError = calculateRepError(
             smoothedAngles,
             learnedTemplateRef.current,
             anglesOfInterest,
             repCount + 1,
             ts / 1000
           )
-          setCurrentRepError(realtimeError)
-          setErrorFeedback(getErrorFeedback(realtimeError))
+          setCurrentRepError(frameRepError)
+          setErrorFeedback(getErrorFeedback(frameRepError))
         }
 
         // ── Dual-threshold live feedback (phase-aware) ──
@@ -1307,27 +1311,55 @@ const startPoseLoop = () => {
             const midpoint = (refStart + refPeak) / 2
 
             // Phase-aware: at rest position show neutral, during active phase use cycle peak
+            let currentThresholdStatus: "below" | "valid" | "good" | "rest" = "rest"
             if (primaryVal < midpoint) {
               // At or near rest/flexed position - this is a valid position, not "bad"
-              setLiveThresholdStatus("rest")
+              currentThresholdStatus = "rest"
               // Reset peak when returning to rest (beginning of new rep cycle)
               repCyclePeakRef.current = primaryVal
             } else {
               // Active/extending phase - use rep cycle peak for sticky status
               const statusAngle = repCyclePeakRef.current
               if (statusAngle >= idealPeak * TOLERANCE) {
-                setLiveThresholdStatus("good")
+                currentThresholdStatus = "good"
               } else if (statusAngle >= refPeak * TOLERANCE) {
-                setLiveThresholdStatus("valid")
+                currentThresholdStatus = "valid"
               } else {
-                setLiveThresholdStatus("below")
+                currentThresholdStatus = "below"
               }
             }
+            setLiveThresholdStatus(currentThresholdStatus)
+
+            frameThresholdStatus = currentThresholdStatus
           }
         }
 
         if (anglesOfInterest && anglesOfInterest.length > 0) {
           updateRepCountFromSignal()
+        }
+
+        // Real-time feedback engine tick
+        // Lazy-init: use referenceTemplate prop or fall back to learnedTemplateRef
+        const effectiveRef = referenceTemplate ?? learnedTemplateRef.current
+        if (!feedbackEngineRef.current && effectiveRef && anglesOfInterest && anglesOfInterest.length > 0) {
+          feedbackEngineRef.current = new RealtimeFeedbackEngine({
+            exerciseType: exerciseType ?? "",
+            allowProgression: allowProgression ?? true,
+            referenceTemplate: effectiveRef,
+            idealTemplate: idealTemplate ?? null,
+            anglesOfInterest,
+          })
+          console.log("🧠 Feedback engine initialized")
+        }
+        if (feedbackEngineRef.current) {
+          feedbackEngineRef.current.tick({
+            now: ts / 1000,
+            smoothedAngles,
+            repError: frameRepError,
+            formScore: frameFormScore,
+            repCount,
+            thresholdStatus: frameThresholdStatus,
+          })
         }
 
         drawer.drawConnectors(landmarks, POSE_CONNECTIONS, {
@@ -1352,9 +1384,6 @@ const startPoseLoop = () => {
   }
 
 
-// =============================
-// 📊 SIGNAL-BASED REP DETECTION STATE
-// =============================
 // Stores per-angle signal tracking (peaks, troughs, direction)
 const repSignalStatesRef = useRef<{
   [key: string]: {
@@ -1369,15 +1398,11 @@ const repSignalStatesRef = useRef<{
 const lastRepTimeRef = useRef<number>(0)
 
 
-// =============================
-// 🔁 SIGNAL-BASED REP DETECTION
-// =============================
+// Signal rep detection
 // Uses derivative + hysteresis to detect movement cycles
 const updateRepCountFromSignal = () => {
 
-  // =============================
-  // 🎯 SELECT TRACKING ANGLES
-  // =============================
+  // Select tracking angles
   let trackingAngles: string[] = []
 
   if (exerciseType === 'knee-extension') {
@@ -1395,17 +1420,11 @@ const updateRepCountFromSignal = () => {
 
   if (trackingAngles.length === 0) return
 
-
-  // =============================
-  // 📊 REQUIRE MIN HISTORY
-  // =============================
   const history = angleHistoryRef.current
   if (history.length < 8) return
 
 
-  // =============================
-  // 🔄 PROCESS EACH TRACKED ANGLE
-  // =============================
+
   trackingAngles.forEach(angleName => {
 
     // Initialize state if not exists
@@ -1419,9 +1438,7 @@ const updateRepCountFromSignal = () => {
     const state = repSignalStatesRef.current[angleName]
 
 
-    // =============================
-    // 📉 RECENT WINDOW EXTRACTION
-    // =============================
+
     const recent = history
       .slice(-30)
       .map(h => ({
@@ -1437,10 +1454,6 @@ const updateRepCountFromSignal = () => {
 
     if (validRecent.length < 5) return
 
-
-    // =============================
-    // 📈 DERIVATIVE (VELOCITY)
-    // =============================
     const n = validRecent.length
     const deriv: number[] = []
 
@@ -1456,9 +1469,7 @@ const updateRepCountFromSignal = () => {
     }
 
 
-    // =============================
-    // 🧠 SMOOTH DERIVATIVE (LOW-PASS)
-    // =============================
+
     const alpha = 0.3
 
     for (let i = 1; i < deriv.length; i++) {
@@ -1468,9 +1479,7 @@ const updateRepCountFromSignal = () => {
     }
 
 
-    // =============================
-    // 🎯 CURRENT DIRECTION
-    // =============================
+
     const lastIdx = deriv.length - 1
     const curr = deriv[lastIdx]
     const nowT = validRecent[validRecent.length - 1].t
@@ -1488,9 +1497,7 @@ const updateRepCountFromSignal = () => {
     if (!dir) return
 
 
-    // =============================
-    // 🔁 DIRECTION CHANGE DETECTION
-    // =============================
+    // Direction change detecion
     if (dir !== state.lastDirection) {
 
       // Prevent rapid oscillations (noise)
@@ -1499,25 +1506,20 @@ const updateRepCountFromSignal = () => {
         return
       }
 
-      // =============================
-      // ⬆️ PEAK DETECTION
-      // =============================
+      // Peak Detection
       if (state.lastDirection === 'up' && dir === 'down') {
         state.lastPeak =
           validRecent[validRecent.length - 1].value
       }
 
-      // =============================
-      // ⬇️ TROUGH DETECTION
-      // =============================
+      // trough detection
       if (state.lastDirection === 'down' && dir === 'up') {
 
         state.lastTrough =
           validRecent[validRecent.length - 1].value
 
-        // =============================
-        // 🎯 VALID REP CHECK
-        // =============================
+      
+      // valid rep checking
         if (
           state.lastPeak !== undefined &&
           state.lastTrough !== undefined
@@ -1577,9 +1579,8 @@ const updateRepCountFromSignal = () => {
     }
   })
 }
-  // =============================
-// 📐 DRAW ANGLE ANNOTATIONS (UI OVERLAY)
-// =============================
+
+//Angle annotations overlay
 // Renders angle values on top of joints in canvas
 const drawAngleAnnotations = (
   ctx: CanvasRenderingContext2D,
@@ -1596,6 +1597,7 @@ const drawAngleAnnotations = (
   const primaryAngle = anglesOfInterest[0]
   const primaryValue = angles[primaryAngle]
 
+  // head/yaw to be removed later
 
   // =============================
   // 🎯 DRAW PRIMARY ANGLE (FACE / BODY)
@@ -1629,9 +1631,7 @@ const drawAngleAnnotations = (
 
     } else {
 
-      // =============================
-      // 🧍 BODY JOINT LABEL MAPPING
-      // =============================
+// body joint label mapping
       // Maps angle → landmark position + offsets
       const angleToLandmarkMap: {
         [key: string]: {
@@ -1650,9 +1650,6 @@ const drawAngleAnnotations = (
         'right_hip': { landmark: POSE_LANDMARKS.RIGHT_HIP, offsetX: 15, offsetY: -10 },
       }
 
-      // =============================
-      // 📊 DRAW ALL SELECTED ANGLES
-      // =============================
       anglesOfInterest
         .filter(angleName =>
           angles[angleName] !== undefined &&
@@ -1718,7 +1715,6 @@ useEffect(() => {
   } catch (e) {
     console.info("No learned template loaded for form scoring.")
   }
-
 
   // =============================
   // 🧹 CLEANUP ON UNMOUNT

@@ -9,6 +9,7 @@ import { getExerciseConfig } from "@/lib/exercise-config"
 import type { LearnedExerciseTemplate } from "@/lib/exercise-state-learner"
 import { compareTemplates, type ComparisonResult } from "@/lib/comparison"
 import { scoreSession, type SessionScore } from "@/lib/progress-scorer"
+import { generatePostSessionFeedback, logFeedback } from "@/lib/feedback-generator"
 import { getIdealTemplate } from "@/lib/ideal-template-manager"
 import { getSimilarityBg } from "@/lib/utils"
 import Link from "next/link"
@@ -38,7 +39,6 @@ export default function ComparePage() {
 
 
   const resetInputMethod = () => {
-    setInputMethod(null)
     setUploadedFile(null)
     setUploadedVideoUrl(null)
     setComparisonResult(null)
@@ -215,6 +215,10 @@ export default function ComparePage() {
       )
       setSessionScoreResult(score)
 
+      // Generate and log feedback to console
+      const feedback = generatePostSessionFeedback(comparison, score, exercise.type, allowProgression)
+      logFeedback(feedback)
+
       // Auto-save session
       await saveSession(comparison, score)
     } catch (err) {
@@ -331,17 +335,6 @@ export default function ComparePage() {
                 <div>
                   <div className="text-white font-semibold text-lg">Record with Webcam</div>
                   <div className="text-white/50 text-sm">Real-time pose detection & feedback</div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setInputMethod('upload')}
-                className="w-full max-w-sm flex items-center gap-4 rounded-xl border-2 border-white/20 bg-white/5 hover:bg-white/10 hover:border-blue-500/60 transition-all p-6 text-left"
-              >
-                <Upload className="w-10 h-10 text-blue-400 shrink-0" />
-                <div>
-                  <div className="text-white font-semibold text-lg">Upload Video</div>
-                  <div className="text-white/50 text-sm">Compare a pre-recorded video</div>
                 </div>
               </button>
             </div>
