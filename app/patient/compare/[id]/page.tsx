@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { supabase } from "@/utils/supabase/client"
 import { analyzeVideoForPose } from "@/lib/pose-analyzer"
@@ -11,10 +10,10 @@ import type { LearnedExerciseTemplate } from "@/lib/exercise-state-learner"
 import { compareTemplates, type ComparisonResult } from "@/lib/comparison"
 import { scoreSession, type SessionScore } from "@/lib/progress-scorer"
 import { getIdealTemplate } from "@/lib/ideal-template-manager"
-import { formatAngleName, getSimilarityColor, getSimilarityBg, getDeviationBg } from "@/lib/utils"
+import { getSimilarityBg } from "@/lib/utils"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import { Upload, Loader2, CheckCircle2, XCircle, Video, Trophy, Target, TrendingUp, Zap } from "lucide-react"
+import { Upload, Loader2, CheckCircle2, Video } from "lucide-react"
 import { ComparisonRecorder } from "@/components/comparison-recorder"
 
 
@@ -229,494 +228,300 @@ export default function ComparePage() {
 
   if (isLoading) {
     return (
-      <main className="min-h-screen bg-background p-8">
-        <div className="max-w-2xl mx-auto">
-          <Card className="p-8 text-center">
-            <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-            <p className="text-muted-foreground">Loading exercise...</p>
-          </Card>
+      <div className="fixed inset-0 bg-black flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-white" />
+          <p className="text-white/60">Loading exercise...</p>
         </div>
-      </main>
+      </div>
     )
   }
 
   if (!exercise) {
     return (
-      <main className="min-h-screen bg-background p-8">
-        <div className="max-w-2xl mx-auto">
-          <Card className="p-8 text-center">
-            <p className="text-muted-foreground">Exercise not found</p>
-            <Link href="/patient">
-              <Button className="mt-4">Back to Dashboard</Button>
-            </Link>
-          </Card>
+      <div className="fixed inset-0 bg-black flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-white/60 mb-4">Exercise not found</p>
+          <Link href="/patient">
+            <Button>Back to Dashboard</Button>
+          </Link>
         </div>
-      </main>
+      </div>
     )
   }
 
 
   return (
-    <main className="min-h-screen bg-background p-2 md:p-4">
-      <div className="w-full max-w-[98vw] mx-auto space-y-4">
-        <div className="flex items-center justify-between">
-          <Link href="/patient">
-            <Button variant="outline" size="sm">← Back</Button>
-          </Link>
+    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+      {/* Top bar */}
+      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
+        <Link href="/patient" className="pointer-events-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-black/60 text-white border-white/30 hover:bg-white/10"
+          >
+            ← Back
+          </Button>
+        </Link>
+        <h1 className="text-white font-semibold text-lg">{exercise.name}</h1>
+        <div className="flex items-center gap-2">
           {sessionSaved && (
-            <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" /> Saved to your record
+            <span className="text-xs text-green-400 flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" /> Saved
             </span>
           )}
           {sessionSaveError && (
-            <span className="text-xs text-destructive">{sessionSaveError}</span>
+            <span className="text-xs text-red-400">{sessionSaveError}</span>
           )}
         </div>
+      </div>
 
-        <div>
-          <h1 className="text-2xl font-bold mb-1">Compare Videos - {exercise.name}</h1>
+      {/* Split screen */}
+      <div className="flex-1 flex min-h-0">
+        {/* ── Left panel: Reference Video ── */}
+        <div className="w-1/2 h-full relative flex items-center justify-center bg-black border-r border-white/10">
+          {videoError && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
+              <div className="text-sm text-red-400 text-center p-4">
+                <p className="font-semibold mb-2">Video Load Error</p>
+                <p>{videoError}</p>
+              </div>
+            </div>
+          )}
+          <video
+            ref={videoRef}
+            controls
+            loop
+            muted
+            autoPlay
+            playsInline
+            className="w-full h-full object-contain"
+            crossOrigin="anonymous"
+            onError={(e) => {
+              setVideoError(
+                e.currentTarget.error
+                  ? `Error ${e.currentTarget.error.code}: ${e.currentTarget.error.message}`
+                  : "Failed to load video"
+              )
+            }}
+            onLoadedData={() => setVideoError(null)}
+          >
+            <source src={exercise.videoUrl} type="video/webm" />
+            <source src={exercise.videoUrl} type="video/mp4" />
+          </video>
+          <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-sm rounded px-3 py-1.5">
+            <span className="text-xs font-medium text-white/80">Reference</span>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Left Column: Reference Video */}
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold">Reference Video</h2>
-            <Card className="overflow-hidden bg-black border-0">
-              {videoError && (
-                <div className="text-sm text-destructive p-4 text-center bg-muted">
-                  <p className="font-semibold mb-2">Video Load Error:</p>
-                  <p>{videoError}</p>
-                  <p className="text-xs mt-2 opacity-70">URL: {exercise.videoUrl}</p>
-                </div>
-              )}
-              <video
-                ref={videoRef}
-                controls
-                loop
-                muted
-                autoPlay
-                playsInline
-                className="w-full h-auto block"
-                crossOrigin="anonymous"
-                onError={(e) => {
-                  setVideoError(
-                    e.currentTarget.error
-                      ? `Error ${e.currentTarget.error.code}: ${e.currentTarget.error.message}`
-                      : "Failed to load video"
-                  )
-                }}
-                onLoadedData={() => setVideoError(null)}
+        {/* ── Right panel: dynamic content ── */}
+        <div className="w-1/2 h-full relative bg-black">
+
+          {/* === Mode selector (no method chosen yet) === */}
+          {!inputMethod && (
+            <div className="h-full flex flex-col items-center justify-center gap-6 px-8">
+              <h2 className="text-white text-xl font-semibold mb-2">Choose Input</h2>
+
+              <button
+                onClick={() => setInputMethod('webcam')}
+                className="w-full max-w-sm flex items-center gap-4 rounded-xl border-2 border-white/20 bg-white/5 hover:bg-white/10 hover:border-green-500/60 transition-all p-6 text-left"
               >
-                <source src={exercise.videoUrl} type="video/webm" />
-                <source src={exercise.videoUrl} type="video/mp4" />
-                Your browser does not support the video tag.
-              </video>
-            </Card>
-          </div>
+                <Video className="w-10 h-10 text-green-400 shrink-0" />
+                <div>
+                  <div className="text-white font-semibold text-lg">Record with Webcam</div>
+                  <div className="text-white/50 text-sm">Real-time pose detection & feedback</div>
+                </div>
+              </button>
 
-          {/* Right Column: User Input / Video */}
-          <div className="space-y-2">
-            {/* Input Method Selection */}
-            {!inputMethod && (
-              <div className="grid grid-cols-1 gap-4">
-                <Card
-                  className="p-6 cursor-pointer hover:border-primary transition-colors"
-                  onClick={() => setInputMethod('upload')}
-                >
-                  <div className="flex items-center gap-4">
-                    <Upload className="w-8 h-8 text-primary" />
-                    <div>
-                      <h3 className="text-lg font-semibold">Upload Video</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Upload a pre-recorded video file
-                      </p>
-                    </div>
-                  </div>
-                </Card>
-                <Card
-                  className="p-6 cursor-pointer hover:border-primary transition-colors"
-                  onClick={() => setInputMethod('webcam')}
-                >
-                  <div className="flex items-center gap-4">
-                    <Video className="w-8 h-8 text-primary" />
-                    <div>
-                      <h3 className="text-lg font-semibold">Record with Webcam</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Record using your webcam with real-time detection
-                      </p>
-                    </div>
-                  </div>
-                </Card>
+              <button
+                onClick={() => setInputMethod('upload')}
+                className="w-full max-w-sm flex items-center gap-4 rounded-xl border-2 border-white/20 bg-white/5 hover:bg-white/10 hover:border-blue-500/60 transition-all p-6 text-left"
+              >
+                <Upload className="w-10 h-10 text-blue-400 shrink-0" />
+                <div>
+                  <div className="text-white font-semibold text-lg">Upload Video</div>
+                  <div className="text-white/50 text-sm">Compare a pre-recorded video</div>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* === Webcam mode === */}
+          {inputMethod === 'webcam' && (
+            <>
+              <ComparisonRecorder
+                fullscreen
+                onVideoRecorded={handleVideoRecorded}
+                anglesOfInterest={getExerciseConfig(exercise?.type)?.anglesOfInterest || ["right_knee"]}
+                exerciseName={exercise?.name}
+                exerciseType={exercise?.type}
+                enableTestMode={true}
+                referenceTemplate={exercise?.learnedTemplate}
+                idealTemplate={idealTemplate ?? undefined}
+                allowProgression={allowProgression}
+              />
+              <button
+                onClick={resetInputMethod}
+                className="absolute top-14 right-4 z-10 text-[10px] text-white/50 hover:text-white/80 bg-black/40 hover:bg-black/60 backdrop-blur-sm rounded-full px-3 py-1 transition-colors"
+              >
+                Change method
+              </button>
+              <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-sm rounded px-3 py-1.5 pointer-events-none">
+                <span className="text-xs font-medium text-white/80">Your Exercise</span>
               </div>
-            )}
-
-            {/* Video Upload Section */}
-            {inputMethod === 'upload' && (
-              <div className="space-y-4">
-                <Card className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-semibold">Upload Video</h2>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={resetInputMethod}
-                    >
-                      Change Method
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <Input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="video/*"
-                      onChange={handleFileUpload}
-                      className="flex-1"
-                    />
-                    {uploadedFile && (
-                      <Button
-                        onClick={compareVideos}
-                        disabled={isAnalyzing}
-                        className="gap-2"
-                      >
-                        {isAnalyzing ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Analyzing...
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="w-4 h-4" />
-                            Compare
-                          </>
-                        )}
-                      </Button>
+              {uploadedFile && (
+                <div className="absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/90 to-transparent px-4 py-3 flex items-center justify-center gap-4">
+                  <p className="text-sm text-white/70">Video recorded</p>
+                  <Button onClick={compareVideos} disabled={isAnalyzing} className="gap-2">
+                    {isAnalyzing ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" />Analyzing...</>
+                    ) : (
+                      <><Upload className="w-4 h-4" />Compare Videos</>
                     )}
-                  </div>
-                  {error && (
-                    <div className="mt-4 p-3 bg-destructive/10 border border-destructive rounded-md">
-                      <p className="text-sm text-destructive">{error}</p>
-                    </div>
-                  )}
-                </Card>
-
-                {uploadedVideoUrl && (
-                  <div className="space-y-3">
-                    <h2 className="text-lg font-semibold">Your Video</h2>
-                    <Card className="p-4 bg-muted aspect-video flex items-center justify-center rounded-lg overflow-hidden">
-                      <video
-                        controls
-                        loop
-                        className="w-full h-full object-contain rounded"
-                      >
-                        <source src={uploadedVideoUrl} type="video/webm" />
-                        <source src={uploadedVideoUrl} type="video/mp4" />
-                        Your browser does not support the video tag.
-                      </video>
-                    </Card>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Webcam Recording Section */}
-            {inputMethod === 'webcam' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold">Record Using Webcam</h2>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={resetInputMethod}
-                  >
-                    Change Method
                   </Button>
                 </div>
-                <ComparisonRecorder
-                  onVideoRecorded={handleVideoRecorded}
-                  anglesOfInterest={getExerciseConfig(exercise?.type)?.anglesOfInterest || ["right_knee"]}
-                  exerciseName={exercise?.name}
-                  exerciseType={exercise?.type}
-                  enableTestMode={true}
-                  referenceTemplate={exercise?.learnedTemplate}
-                  idealTemplate={idealTemplate ?? undefined}
-                  allowProgression={allowProgression}
-                />
-                {uploadedFile && (
-                  <Card className="p-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-muted-foreground">Video recorded successfully!</p>
-                      <Button
-                        onClick={compareVideos}
-                        disabled={isAnalyzing}
-                        className="gap-2"
-                      >
-                        {isAnalyzing ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Analyzing...
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="w-4 h-4" />
-                            Compare Videos
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </Card>
-                )}
-                {error && (
-                  <div className="p-3 bg-destructive/10 border border-destructive rounded-md">
-                    <p className="text-sm text-destructive">{error}</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+              )}
+            </>
+          )}
 
-        {/* ── New: Progress Score Results ── */}
-        {sessionScoreResult && (
-          <Card className="p-6">
-            <h2 className="text-2xl font-bold mb-6">Exercise Score</h2>
-
-            {/* Score cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-              <ScoreCard
-                label="Valid Reps"
-                value={`${sessionScoreResult.validReps}/${sessionScoreResult.totalReps}`}
-                icon={<Target className="w-4 h-4" />}
-                color={sessionScoreResult.validReps > 0 ? "text-green-600" : "text-muted-foreground"}
-                bg={sessionScoreResult.validReps > 0 ? "bg-green-50 dark:bg-green-950/30" : "bg-muted"}
-              />
-              <ScoreCard
-                label={allowProgression ? "Good Reps" : "Good Reps"}
-                value={`${sessionScoreResult.goodReps}/${sessionScoreResult.totalReps}`}
-                icon={<Trophy className="w-4 h-4" />}
-                color={sessionScoreResult.goodReps > 0 ? "text-amber-600" : "text-muted-foreground"}
-                bg={sessionScoreResult.goodReps > 0 ? "bg-amber-50 dark:bg-amber-950/30" : "bg-muted"}
-              />
-              <ScoreCard
-                label="Progress"
-                value={`${sessionScoreResult.progressScore}%`}
-                icon={<TrendingUp className="w-4 h-4" />}
-                color={getProgressColor(sessionScoreResult.progressScore)}
-                bg={getProgressBg(sessionScoreResult.progressScore)}
-              />
-              <ScoreCard
-                label="Form"
-                value={`${sessionScoreResult.formScore}%`}
-                icon={<Zap className="w-4 h-4" />}
-                color={getProgressColor(sessionScoreResult.formScore)}
-                bg={getProgressBg(sessionScoreResult.formScore)}
-              />
-            </div>
-
-            {/* Progress bar: ref → patient → ideal */}
-            {allowProgression && idealTemplate && (
-              <div className="mb-6 p-4 rounded-lg bg-muted/50">
-                <p className="text-xs font-medium text-muted-foreground mb-2">
-                  Range of Motion Progress
-                </p>
-                <div className="relative h-4 bg-muted rounded-full overflow-hidden">
-                  {/* Reference marker (left side) */}
-                  <div className="absolute left-0 top-0 h-full bg-yellow-400/30" style={{ width: "100%" }} />
-                  {/* Patient progress */}
-                  <div
-                    className={`absolute left-0 top-0 h-full rounded-full transition-all ${
-                      sessionScoreResult.progressScore >= 90
-                        ? "bg-green-500"
-                        : sessionScoreResult.progressScore >= 50
-                          ? "bg-yellow-500"
-                          : "bg-red-500"
-                    }`}
-                    style={{ width: `${sessionScoreResult.progressScore}%` }}
+          {/* === Upload mode === */}
+          {inputMethod === 'upload' && (
+            <div className="h-full flex flex-col">
+              {/* Upload controls */}
+              <div className="p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-white text-lg font-semibold">Upload Video</h2>
+                  <button
+                    onClick={resetInputMethod}
+                    className="text-xs text-white/50 hover:text-white/80 bg-white/5 hover:bg-white/10 rounded-full px-3 py-1 transition-colors"
+                  >
+                    Change method
+                  </button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="video/*"
+                    onChange={handleFileUpload}
+                    className="flex-1 bg-white/5 border-white/20 text-white file:text-white/70"
                   />
-                </div>
-                <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                  <span>Reference (floor)</span>
-                  <span>Ideal (ceiling)</span>
+                  {uploadedFile && (
+                    <Button onClick={compareVideos} disabled={isAnalyzing} className="gap-2 shrink-0">
+                      {isAnalyzing ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" />Analyzing...</>
+                      ) : (
+                        <><Upload className="w-4 h-4" />Compare</>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
-            )}
 
-            {/* Per-rep breakdown */}
-            {sessionScoreResult.perRepDetails.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold mb-3">Rep Breakdown</h3>
-                <div className="space-y-2">
-                  {sessionScoreResult.perRepDetails.map((rep) => (
-                    <div
-                      key={rep.rep}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-md border ${
-                        rep.good
-                          ? "border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/20"
-                          : rep.valid
-                            ? "border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950/20"
-                            : "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/20"
-                      }`}
-                    >
-                      <span className="text-sm font-semibold w-8">#{rep.rep}</span>
-                      <span className="text-sm">
-                        Peak: <strong>{Math.round(rep.peakAngle)}°</strong>
-                      </span>
-                      <div className="flex-1" />
-                      {rep.valid && (
-                        <span className="text-xs text-muted-foreground">
-                          Progress: {rep.progressPercent}%
-                        </span>
-                      )}
-                      <span className="text-xs font-medium">
-                        Form: {rep.formScore}%
-                      </span>
-                      {rep.good ? (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400 font-medium">
-                          Good
-                        </span>
-                      ) : rep.valid ? (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400 font-medium">
-                          Valid
-                        </span>
-                      ) : (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400 font-medium">
-                          Below ref
-                        </span>
+              {/* Uploaded video preview */}
+              {uploadedVideoUrl && !sessionScoreResult && !comparisonResult && (
+                <div className="flex-1 min-h-0 relative">
+                  <video controls loop className="w-full h-full object-contain">
+                    <source src={uploadedVideoUrl} type="video/webm" />
+                    <source src={uploadedVideoUrl} type="video/mp4" />
+                  </video>
+                  <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-sm rounded px-3 py-1.5 pointer-events-none">
+                    <span className="text-xs font-medium text-white/80">Your Video</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Results scroll area (inside right panel) */}
+              {(sessionScoreResult || comparisonResult) && (
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+                  {sessionScoreResult && (
+                    <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-4">
+                      <h2 className="text-lg font-bold text-white">Exercise Score</h2>
+                      <div className="grid grid-cols-2 gap-2">
+                        <DarkScoreCard label="Valid Reps" value={`${sessionScoreResult.validReps}/${sessionScoreResult.totalReps}`} color={sessionScoreResult.validReps > 0 ? "text-green-400" : "text-white/40"} />
+                        <DarkScoreCard label="Good Reps" value={`${sessionScoreResult.goodReps}/${sessionScoreResult.totalReps}`} color={sessionScoreResult.goodReps > 0 ? "text-amber-400" : "text-white/40"} />
+                        <DarkScoreCard label="Progress" value={`${sessionScoreResult.progressScore}%`} color={sessionScoreResult.progressScore >= 80 ? "text-green-400" : sessionScoreResult.progressScore >= 50 ? "text-yellow-400" : "text-red-400"} />
+                        <DarkScoreCard label="Form" value={`${sessionScoreResult.formScore}%`} color={sessionScoreResult.formScore >= 80 ? "text-green-400" : sessionScoreResult.formScore >= 50 ? "text-yellow-400" : "text-red-400"} />
+                      </div>
+
+                      {sessionScoreResult.perRepDetails.length > 0 && (
+                        <div className="space-y-1.5">
+                          <h3 className="text-sm font-semibold text-white/70">Rep Breakdown</h3>
+                          {sessionScoreResult.perRepDetails.map((rep) => (
+                            <div
+                              key={rep.rep}
+                              className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs border ${
+                                rep.good
+                                  ? "border-green-500/30 bg-green-500/10 text-green-300"
+                                  : rep.valid
+                                    ? "border-yellow-500/30 bg-yellow-500/10 text-yellow-300"
+                                    : "border-red-500/30 bg-red-500/10 text-red-300"
+                              }`}
+                            >
+                              <span className="font-semibold">#{rep.rep}</span>
+                              <span>Peak: {Math.round(rep.peakAngle)}°</span>
+                              <span className="flex-1" />
+                              <span>Form: {rep.formScore}%</span>
+                              <span className="font-medium">{rep.good ? "Good" : rep.valid ? "Valid" : "Below"}</span>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                  )}
 
-            {/* Mode indicator */}
-            <p className="text-xs text-muted-foreground">
-              Mode: {allowProgression ? "Progression enabled — good reps require reaching ideal ROM" : "Stick with reference — all valid reps count as good"}
-            </p>
-          </Card>
-        )}
-
-        {/* ── Legacy: Comparison Results ── */}
-        {comparisonResult && (
-          <Card className="p-6">
-            <h2 className="text-2xl font-bold mb-6">Detailed Comparison</h2>
-            {/* Overall Similarity */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-lg font-semibold">Overall Similarity</span>
-                <span className={`text-3xl font-bold ${getSimilarityColor(comparisonResult.similarity)}`}>
-                  {comparisonResult.similarity}%
-                </span>
-              </div>
-              <div className="w-full bg-muted rounded-full h-4 overflow-hidden">
-                <div
-                  className={`h-full transition-all ${getSimilarityBg(comparisonResult.similarity)}`}
-                  style={{ width: `${comparisonResult.similarity}%` }}
-                />
-              </div>
-            </div>
-
-
-            {/* Rep Counts */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <Card className="p-4 bg-blue-50 dark:bg-blue-950/20">
-                <div className="text-sm text-muted-foreground mb-1">Reference Reps</div>
-                <div className="text-3xl font-bold">{comparisonResult.referenceReps}</div>
-              </Card>
-              <Card className="p-4 bg-purple-50 dark:bg-purple-950/20">
-                <div className="text-sm text-muted-foreground mb-1">Your Reps</div>
-                <div className="text-3xl font-bold">{comparisonResult.uploadedReps}</div>
-              </Card>
-            </div>
-
-            {/* State Matches */}
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold mb-3">State Accuracy</h3>
-              <div className="space-y-2">
-                {Object.entries(comparisonResult.details.stateMatches).map(([state, similarity]) => (
-                  <div key={state} className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium">{state}</span>
-                        <span className="text-sm text-muted-foreground">{Math.round(similarity)}%</span>
+                  {comparisonResult && (
+                    <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-4">
+                      <h2 className="text-lg font-bold text-white">Detailed Comparison</h2>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-white/70">Overall Similarity</span>
+                        <span className={`text-2xl font-bold ${getSimilarityColor(comparisonResult.similarity)}`}>
+                          {comparisonResult.similarity}%
+                        </span>
                       </div>
-                      <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                      <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
                         <div
-                          className={`h-full ${getSimilarityBg(similarity)}`}
-                          style={{ width: `${similarity}%` }}
+                          className={`h-full transition-all ${getSimilarityBg(comparisonResult.similarity)}`}
+                          style={{ width: `${comparisonResult.similarity}%` }}
                         />
                       </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <DarkScoreCard label="Reference Reps" value={`${comparisonResult.referenceReps}`} color="text-blue-400" />
+                        <DarkScoreCard label="Your Reps" value={`${comparisonResult.uploadedReps}`} color="text-purple-400" />
+                      </div>
                     </div>
-                    {similarity >= 80 ? (
-                      <CheckCircle2 className="w-5 h-5 text-green-500" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-red-500" />
-                    )}
-                  </div>
-                ))}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
-
-
-            {/* Angle Deviations */}
-            <div>
-              <h3 className="text-lg font-semibold mb-3">Angle Deviations</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {Object.entries(comparisonResult.details.angleDeviations)
-                  .sort(([a], [b]) => {
-                    const aBase = a.replace(/^(left_|right_)/, '')
-                    const bBase = b.replace(/^(left_|right_)/, '')
-                    if (aBase === bBase) {
-                      return a.includes('left') ? -1 : 1
-                    }
-                    return a.localeCompare(b)
-                  })
-                  .map(([angle, deviation]) => (
-                      <Card key={angle} className={`p-3 ${getDeviationBg(deviation)}`}>
-                        <div className="text-xs text-muted-foreground mb-1">{formatAngleName(angle)}</div>
-                        <div className="text-xl font-bold">±{Math.round(deviation)}°</div>
-                      </Card>
-                  ))}
-              </div>
-            </div>
-          </Card>
-        )}
+          )}
+        </div>
       </div>
-    </main>
+
+      {/* Error toast */}
+      {error && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 p-3 bg-red-900/80 border border-red-500 rounded-md max-w-md">
+          <p className="text-sm text-red-200">{error}</p>
+        </div>
+      )}
+    </div>
   )
 }
 
 // ── Helper components ─────────────────────────────────────────────
 
-function ScoreCard({
-  label, value, icon, color, bg,
-}: {
-  label: string
-  value: string
-  icon: React.ReactNode
-  color: string
-  bg: string
-}) {
+function DarkScoreCard({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <Card className="p-4">
-      <div className="flex items-center gap-2 mb-1">
-        <div className={`p-1.5 rounded-md ${bg}`}>
-          <span className={color}>{icon}</span>
-        </div>
-        <span className="text-xs text-muted-foreground">{label}</span>
-      </div>
-      <p className={`text-2xl font-bold ${color}`}>{value}</p>
-    </Card>
+    <div className="rounded-lg bg-white/5 border border-white/10 p-3">
+      <div className="text-[10px] text-white/50 mb-1">{label}</div>
+      <div className={`text-xl font-bold ${color}`}>{value}</div>
+    </div>
   )
 }
 
-function getProgressColor(score: number): string {
-  if (score >= 80) return "text-green-600 dark:text-green-400"
-  if (score >= 50) return "text-yellow-600 dark:text-yellow-400"
-  return "text-red-600 dark:text-red-400"
-}
-
-function getProgressBg(score: number): string {
-  if (score >= 80) return "bg-green-50 dark:bg-green-950/30"
-  if (score >= 50) return "bg-yellow-50 dark:bg-yellow-950/30"
-  return "bg-red-50 dark:bg-red-950/30"
+function getSimilarityColor(score: number): string {
+  if (score >= 80) return "text-green-400"
+  if (score >= 50) return "text-yellow-400"
+  return "text-red-400"
 }

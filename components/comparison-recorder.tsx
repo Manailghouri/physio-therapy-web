@@ -55,6 +55,7 @@ interface ComparisonRecorderProps {
   referenceTemplate?: LearnedExerciseTemplate
   idealTemplate?: LearnedExerciseTemplate
   allowProgression?: boolean
+  fullscreen?: boolean
 }
 
 
@@ -108,7 +109,8 @@ export function ComparisonRecorder({
   enableTestMode = false,
   referenceTemplate,
   idealTemplate,
-  allowProgression = true
+  allowProgression = true,
+  fullscreen = false
 }: ComparisonRecorderProps) {
 
 
@@ -200,11 +202,14 @@ export function ComparisonRecorder({
   // ----------LIVE FEEDBACK SYSTEM----------
 
   const [liveThresholdStatus, setLiveThresholdStatus] =
-    useState<"below" | "valid" | "good">("below")
+    useState<"below" | "valid" | "good" | "rest">("rest")
 
   const [livePrimaryAngle, setLivePrimaryAngle] = useState<number | null>(null)
   const [liveValidReps, setLiveValidReps] = useState(0)
   const [liveGoodReps, setLiveGoodReps] = useState(0)
+
+  // Track the peak angle reached in the current rep cycle (for sticky threshold status)
+  const repCyclePeakRef = useRef<number>(0)
 
 
 
@@ -1269,17 +1274,21 @@ const startPoseLoop = () => {
           setErrorFeedback(getErrorFeedback(realtimeError))
         }
 
-        // ── Dual-threshold live feedback ──
+        // ── Dual-threshold live feedback (phase-aware) ──
         if (referenceTemplate && anglesOfInterest && anglesOfInterest.length > 0) {
           const primaryName = anglesOfInterest[0]
           const primaryVal = smoothedAngles[primaryName]
           if (primaryVal !== undefined) {
             setLivePrimaryAngle(primaryVal)
-            // Extract reference peak
+            // Extract reference peak (highest angle) and start (lowest angle)
             let refPeak = 0
+            let refStart = Infinity
             for (const s of referenceTemplate.states) {
               const r = s.angleRanges[primaryName]
-              if (r && r.mean > refPeak) refPeak = r.mean
+              if (r) {
+                if (r.mean > refPeak) refPeak = r.mean
+                if (r.mean < refStart) refStart = r.mean
+              }
             }
             // Extract ideal peak
             const effectiveIdeal = allowProgression && idealTemplate ? idealTemplate : referenceTemplate
@@ -1288,13 +1297,31 @@ const startPoseLoop = () => {
               const r = s.angleRanges[primaryName]
               if (r && r.mean > idealPeak) idealPeak = r.mean
             }
+
+            // Track peak angle in current rep cycle (sticky: once high, stays high until reset)
+            if (primaryVal > repCyclePeakRef.current) {
+              repCyclePeakRef.current = primaryVal
+            }
+
             const TOLERANCE = 0.9
-            if (primaryVal >= idealPeak * TOLERANCE) {
-              setLiveThresholdStatus("good")
-            } else if (primaryVal >= refPeak * TOLERANCE) {
-              setLiveThresholdStatus("valid")
+            const midpoint = (refStart + refPeak) / 2
+
+            // Phase-aware: at rest position show neutral, during active phase use cycle peak
+            if (primaryVal < midpoint) {
+              // At or near rest/flexed position - this is a valid position, not "bad"
+              setLiveThresholdStatus("rest")
+              // Reset peak when returning to rest (beginning of new rep cycle)
+              repCyclePeakRef.current = primaryVal
             } else {
-              setLiveThresholdStatus("below")
+              // Active/extending phase - use rep cycle peak for sticky status
+              const statusAngle = repCyclePeakRef.current
+              if (statusAngle >= idealPeak * TOLERANCE) {
+                setLiveThresholdStatus("good")
+              } else if (statusAngle >= refPeak * TOLERANCE) {
+                setLiveThresholdStatus("valid")
+              } else {
+                setLiveThresholdStatus("below")
+              }
             }
           }
         }
@@ -1719,6 +1746,185 @@ useEffect(() => {
 
 }, [])
 
+  // =============================
+  // FULLSCREEN RENDER MODE
+  // =============================
+  if (fullscreen) {
+    return (
+      <div className="h-full w-full relative bg-black">
+        {/* Start overlay when not streaming */}
+        {!isStreaming && !isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center z-10">
+            <div className="flex flex-col gap-3 items-center">
+              <Button onClick={openWebcam} size="lg" className="gap-2 text-lg px-8 py-6">
+                Start Webcam
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLanguage(prev => prev === "en" ? "ur" : "en")}
+                className="text-white border-white/30 bg-black/40"
+              >
+                {language === "en" ? "English" : "اردو"}
+              </Button>
+              {enableTestMode && (
+                <>
+                  <input ref={fileInputRef} type="file" accept="video/*" onChange={handleTestVideoUpload} className="hidden" />
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isLoading}
+                    variant="outline"
+                    size="lg"
+                    className="gap-2 text-white border-white/30 bg-black/40"
+                  >
+                    Test with Video File
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center z-10">
+            <div className="text-white text-lg animate-pulse">Loading...</div>
+          </div>
+        )}
+
+        {/* Video + Canvas (fills container) */}
+        <div className="relative w-full h-full">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-full object-contain"
+          />
+          <canvas
+            ref={canvasRef}
+            className="absolute top-0 left-0 w-full h-full"
+          />
+
+          {isStreaming && (
+            <>
+              {/* Rep counter overlay */}
+              <div className={`absolute top-4 left-4 bg-black/80 backdrop-blur-sm rounded-lg px-6 py-4 border-2 ${
+                referenceTemplate
+                  ? liveThresholdStatus === "good"
+                    ? "border-green-500"
+                    : liveThresholdStatus === "valid"
+                      ? "border-yellow-500"
+                      : liveThresholdStatus === "rest"
+                        ? "border-blue-500"
+                        : "border-red-500"
+                  : "border-green-500"
+              }`}>
+                <div className={`text-sm font-semibold mb-1 ${
+                  referenceTemplate
+                    ? liveThresholdStatus === "good"
+                      ? "text-green-400"
+                      : liveThresholdStatus === "valid"
+                        ? "text-yellow-400"
+                        : liveThresholdStatus === "rest"
+                          ? "text-blue-400"
+                          : "text-red-400"
+                    : "text-green-400"
+                }`}>REPS</div>
+                <div className="text-5xl font-bold text-white">{repCount}</div>
+                {referenceTemplate && (
+                  <div className="mt-2 text-[10px] space-y-0.5">
+                    <div className={`font-semibold ${
+                      liveThresholdStatus === "good"
+                        ? "text-green-400"
+                        : liveThresholdStatus === "valid"
+                          ? "text-yellow-400"
+                          : liveThresholdStatus === "rest"
+                            ? "text-blue-400"
+                            : "text-red-400"
+                    }`}>
+                      {liveThresholdStatus === "good" ? "Ideal ROM reached" :
+                       liveThresholdStatus === "valid" ? "Reference ROM reached" :
+                       liveThresholdStatus === "rest" ? "Ready" :
+                       "Extend further"}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* State overlay */}
+              {(currentState || templateState) && (
+                <div className="absolute top-4 right-4 bg-black/80 backdrop-blur-sm rounded-lg px-3 py-2 border border-blue-500">
+                  <div className="text-xs text-blue-400 font-semibold mb-0.5">STATE</div>
+                  <div className="text-lg font-bold text-white capitalize">{templateState || currentState}</div>
+                </div>
+              )}
+
+              {/* Live angles overlay (bottom) */}
+              {Object.keys(currentAngles).length > 0 && (
+                <div className="absolute bottom-4 left-4 right-4 bg-black/80 backdrop-blur-sm rounded-lg p-2 border border-purple-500/50">
+                  <div className="text-[10px] text-purple-400 font-semibold mb-0.5">LIVE ANGLES</div>
+                  <div className="grid grid-cols-4 gap-1">
+                    {anglesOfInterest && anglesOfInterest.length > 0 ? (
+                      anglesOfInterest.map(angleName => {
+                        const angle = currentAngles[angleName]
+                        if (angle === undefined) return null
+                        return (
+                          <div key={angleName} className="flex flex-col">
+                            <span className="text-[10px] text-gray-400 capitalize">
+                              {angleName.replace(/_/g, ' ')}
+                            </span>
+                            <span className="text-sm font-bold text-white">
+                              {Math.round(angle)}°
+                            </span>
+                          </div>
+                        )
+                      })
+                    ) : (
+                      Object.entries(currentAngles)
+                        .filter(([name]) => !name.includes('segment'))
+                        .slice(0, 6)
+                        .map(([angleName, angle]) => (
+                          <div key={angleName} className="flex flex-col">
+                            <span className="text-[10px] text-gray-400 capitalize">
+                              {angleName.replace(/_/g, ' ')}
+                            </span>
+                            <span className="text-sm font-bold text-white">
+                              {Math.round(angle)}°
+                            </span>
+                          </div>
+                        ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Test mode floating controls */}
+        {testMode && isStreaming && (
+          <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex gap-2 z-10">
+            <Button onClick={togglePlayPause} variant="outline" size="sm" className="bg-black/60 text-white border-white/30">
+              {isPlaying ? "Pause" : "Play"}
+            </Button>
+            <Button onClick={resetTestVideo} variant="outline" size="sm" className="bg-black/60 text-white border-white/30">
+              Reset
+            </Button>
+            <Button onClick={stopTestMode} variant="destructive" size="sm">
+              Stop
+            </Button>
+          </div>
+        )}
+
+        {testMode && testVideoFile && (
+          <div className="absolute top-16 left-4 bg-yellow-500/20 backdrop-blur-sm rounded px-2 py-1 z-10">
+            <div className="text-xs text-yellow-300 font-semibold">TEST: {testVideoFile.name}</div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <Card className="p-6 space-y-4">
       <div className="flex gap-3">
@@ -1729,7 +1935,7 @@ useEffect(() => {
     variant="outline"
     onClick={() => setLanguage(prev => prev === "en" ? "ur" : "en")}
   >
-    🌐 {language === "en" ? "English" : "اردو"}
+    {language === "en" ? "English" : "اردو"}
   </Button>
         
         {enableTestMode && !isStreaming && (
@@ -1803,7 +2009,9 @@ useEffect(() => {
                   ? "border-green-500"
                   : liveThresholdStatus === "valid"
                     ? "border-yellow-500"
-                    : "border-red-500"
+                    : liveThresholdStatus === "rest"
+                      ? "border-blue-500"
+                      : "border-red-500"
                 : "border-green-500"
             }`}>
               <div className={`text-sm font-semibold mb-1 ${
@@ -1812,7 +2020,9 @@ useEffect(() => {
                     ? "text-green-400"
                     : liveThresholdStatus === "valid"
                       ? "text-yellow-400"
-                      : "text-red-400"
+                      : liveThresholdStatus === "rest"
+                        ? "text-blue-400"
+                        : "text-red-400"
                   : "text-green-400"
               }`}>REPS</div>
               <div className="text-5xl font-bold text-white">{repCount}</div>
@@ -1823,11 +2033,14 @@ useEffect(() => {
                       ? "text-green-400"
                       : liveThresholdStatus === "valid"
                         ? "text-yellow-400"
-                        : "text-red-400"
+                        : liveThresholdStatus === "rest"
+                          ? "text-blue-400"
+                          : "text-red-400"
                   }`}>
                     {liveThresholdStatus === "good" ? "Ideal ROM reached" :
                      liveThresholdStatus === "valid" ? "Reference ROM reached" :
-                     "Below reference"}
+                     liveThresholdStatus === "rest" ? "Ready" :
+                     "Extend further"}
                   </div>
                 </div>
               )}

@@ -1,0 +1,13 @@
+The problem right now is the rest of the system is fine but the main thing sucks. 
+How do i fix it? Well it's obvious that I should just begin with discardign everything then build from scratch in a matter of a few days. 
+Can I do it? Only one way to find out, if all else fails there's the older versions to fall back to. 
+
+Which is why what I'm gonna do is the following:
+- mediapipe should show a very minimal output like that one mobile app i saw where every angle you missed turned out and all that were on track were green
+- how do i do that. What is the best way to compare two videos with variable reps, is k means clustering even a good idea? 
+- Let's just figure that out
+
+- the problem is, the reference video isn't performing that well yet so what i can do is  re-engineer, retrace my steps, im going ultra instinct these days
+- Fuck everything, im doing it coz its fun. Winning fyp thing doesn't matter, nothing does. What matters is to see how far I can go
+
+
