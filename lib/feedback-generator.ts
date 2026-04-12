@@ -376,9 +376,11 @@ export function generatePostSessionFeedback(
     }
   }
 
-  // 3. Secondary angle drifts
+  // 3. Secondary angle drifts (only exercise-relevant angles)
+  const relevantAngles = config?.anglesOfInterest ?? []
   const secondaries = Object.entries(comparison.details.angleDeviations)
     .filter(([name]) => name !== primaryAngle)
+    .filter(([name]) => relevantAngles.length === 0 || relevantAngles.includes(name))
     .sort(([, a], [, b]) => b - a)
 
   for (const [angleName, dev] of secondaries) {

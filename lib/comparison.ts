@@ -1,4 +1,5 @@
 import type { LearnedExerciseTemplate, DetectedState } from "@/lib/exercise-state-learner"
+import { getExerciseConfig } from "./exercise-config"
 
 export interface ComparisonResult {
   similarity: number
@@ -15,6 +16,9 @@ export interface ComparisonResult {
 
 // Compare two learned exercise templates and return a similarity score.
 // Score = (stateSimilarity × 0.6) + (angleAccuracy × 0.4)
+//
+// IMPORTANT: Only compares exercise-relevant joints. For knee extensions,
+// only knee/leg angles matter — arm movement is ignored entirely.
 export function compareTemplates(
   reference: LearnedExerciseTemplate,
   uploaded: LearnedExerciseTemplate
@@ -22,24 +26,36 @@ export function compareTemplates(
   const stateMatches: { [key: string]: number } = {}
   const angleDeviations: { [key: string]: number } = {}
 
+  // Get exercise-specific angles — only these joints matter for comparison
+  const exerciseType = reference.exerciseType
+  const config = getExerciseConfig(exerciseType)
+  const relevantAngles: Set<string> | null = config
+    ? new Set(config.anglesOfInterest)
+    : null // null = no config found, fall back to all angles
+
   // For each reference state, find the closest matching uploaded state
+  // (only comparing relevant joints)
   reference.states.forEach((refState) => {
     const closestMatch = uploaded.states.reduce((best, upState) => {
-      const similarity = calculateStateSimilarity(refState, upState)
+      const similarity = calculateStateSimilarity(refState, upState, relevantAngles)
       return similarity > best.similarity ? { state: upState, similarity } : best
     }, { state: uploaded.states[0], similarity: 0 })
 
     stateMatches[refState.name] = closestMatch.similarity
   })
 
-  // Collect all angle names across reference states
-  const allAngles = new Set<string>()
+  // Only compute deviations for exercise-relevant angles
+  const anglesToCompare: Set<string> = new Set()
   reference.states.forEach(s =>
-    Object.keys(s.angleRanges).forEach(angle => allAngles.add(angle))
+    Object.keys(s.angleRanges).forEach(angle => {
+      if (!relevantAngles || relevantAngles.has(angle)) {
+        anglesToCompare.add(angle)
+      }
+    })
   )
 
-  // Calculate average deviation per angle
-  allAngles.forEach(angleName => {
+  // Calculate average deviation per angle (only relevant ones)
+  anglesToCompare.forEach(angleName => {
     const refAngles = reference.states
       .map(s => s.angleRanges[angleName]?.mean)
       .filter(a => a !== undefined) as number[]
@@ -55,10 +71,14 @@ export function compareTemplates(
   })
 
   // Overall score: 60% state similarity + 40% angle accuracy
-  const stateSimilarity = Object.values(stateMatches).reduce((a, b) => a + b, 0) / Object.values(stateMatches).length
-  const angleAccuracy = 100 - Math.min(100,
-    Object.values(angleDeviations).reduce((a, b) => a + b, 0) / Object.values(angleDeviations).length
-  )
+  const stateMatchValues = Object.values(stateMatches)
+  const stateSimilarity = stateMatchValues.length > 0
+    ? stateMatchValues.reduce((a, b) => a + b, 0) / stateMatchValues.length
+    : 0
+  const deviationValues = Object.values(angleDeviations)
+  const angleAccuracy = deviationValues.length > 0
+    ? 100 - Math.min(100, deviationValues.reduce((a, b) => a + b, 0) / deviationValues.length)
+    : 0
   const overallSimilarity = (stateSimilarity * 0.6 + angleAccuracy * 0.4)
 
   return {
@@ -77,11 +97,23 @@ export function compareTemplates(
 /**
  * Calculate similarity between two detected states based on their angle ranges.
  * Returns 0-100 where 100 = identical angles.
+ *
+ * @param relevantAngles  If provided, only these angles are compared.
+ *                        If null, all common angles are used (legacy fallback).
  */
-export function calculateStateSimilarity(state1: DetectedState, state2: DetectedState): number {
+export function calculateStateSimilarity(
+  state1: DetectedState,
+  state2: DetectedState,
+  relevantAngles?: Set<string> | null
+): number {
   const angles1 = Object.keys(state1.angleRanges)
   const angles2 = Object.keys(state2.angleRanges)
-  const commonAngles = angles1.filter(a => angles2.includes(a))
+  let commonAngles = angles1.filter(a => angles2.includes(a))
+
+  // Filter to only exercise-relevant joints
+  if (relevantAngles) {
+    commonAngles = commonAngles.filter(a => relevantAngles.has(a))
+  }
 
   if (commonAngles.length === 0) return 0
 
