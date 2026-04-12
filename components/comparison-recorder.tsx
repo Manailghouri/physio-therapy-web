@@ -1283,9 +1283,27 @@ const startPoseLoop = () => {
             const TOLERANCE = 0.9
             const midpoint = (refStart + refPeak) / 2
 
+            // Validate that the person is actually in a recognized exercise position.
+            // Collect all template states (reference + ideal) and check if current
+            // angles fall within the known ranges. Prevents false "Ideal ROM reached"
+            // when e.g. standing with straight legs during a seated knee extension.
+            const allTemplateStates = [
+              ...referenceTemplate.states,
+              ...(idealTemplate?.states ?? []),
+            ]
+            const inExerciseRange = isWithinExerciseRange(
+              smoothedAngles,
+              allTemplateStates,
+              anglesOfInterest!,
+            )
+
             // Phase-aware: at rest position show neutral, during active phase use cycle peak
             let currentThresholdStatus: "below" | "valid" | "good" | "rest" = "rest"
-            if (primaryVal < midpoint) {
+            if (!inExerciseRange) {
+              // Angles don't match any known exercise state — not performing this exercise
+              currentThresholdStatus = "rest"
+              repCyclePeakRef.current = primaryVal
+            } else if (primaryVal < midpoint) {
               // At or near rest/flexed position - this is a valid position, not "bad"
               currentThresholdStatus = "rest"
               // Reset peak when returning to rest (beginning of new rep cycle)
@@ -2298,9 +2316,59 @@ function computeFormScore(
 }
 
 
-// =============================
-// 🧠 TEMPLATE STATE MATCHING
-// =============================
+// exercise position validation
+// Checks if the current angles fall within the global range of known template states.
+// This prevents false "Ideal ROM reached" when the person isn't actually performing
+// the exercise (e.g., standing with straight legs vs. seated knee extension).
+//
+// Computes the overall [min, max] across ALL states for each angle of interest,
+// then checks if the current angles fall within that range (+ buffer).
+// Returns true if the majority of angles are in range.
+
+function isWithinExerciseRange(
+  smoothedAngles: Record<string, number>,
+  allStates: { angleRanges: Record<string, { min: number; max: number }> }[],
+  anglesOfInterest: string[],
+  buffer: number = 20
+): boolean {
+  if (allStates.length === 0 || anglesOfInterest.length === 0) return false
+
+  let inRangeCount = 0
+  let checkedCount = 0
+
+  for (const angle of anglesOfInterest) {
+    const actual = smoothedAngles[angle]
+    if (actual === undefined) continue
+
+    // Compute global min/max for this angle across all states
+    let globalMin = Infinity
+    let globalMax = -Infinity
+    let found = false
+
+    for (const state of allStates) {
+      const range = state.angleRanges[angle]
+      if (range) {
+        if (range.min < globalMin) globalMin = range.min
+        if (range.max > globalMax) globalMax = range.max
+        found = true
+      }
+    }
+
+    if (!found) continue
+    checkedCount++
+
+    if (actual >= globalMin - buffer && actual <= globalMax + buffer) {
+      inRangeCount++
+    }
+  }
+
+  if (checkedCount === 0) return false
+  // Require at least half the angles to be in the template's range
+  return inRangeCount / checkedCount >= 0.5
+}
+
+
+// Template state matching
 // Maps current angles → closest template state
 function mapToTemplateState(
   angles: JointAngleData,
@@ -2357,17 +2425,14 @@ function mapToTemplateState(
 }
 
 
-// =============================
-// 🔁 TEMPLATE REP TRACKING STATE
-// =============================
+
 const templateLastStateRef: { current: string | null } = { current: null }
 const templateVisitedPeakRef: { current: boolean } = { current: false }
 const templateLastChangeTsRef: { current: number } = { current: 0 }
 
 
-// =============================
-// 🔁 TEMPLATE-BASED REP DETECTION
-// =============================
+
+// template rep counte
 function updateTemplateRepCount(
   mappedStateId: string | null,
   timestamp: number,
@@ -2408,17 +2473,13 @@ function updateTemplateRepCount(
     const peakId = sorted[sorted.length - 1].id
 
 
-    // =============================
-    // 🎯 PEAK DETECTION
-    // =============================
+    // peak is detected
     if (mappedStateId === peakId && last === startId) {
       templateVisitedPeakRef.current = true
     }
 
 
-    // =============================
-    // 🔁 REP COMPLETION (START → PEAK → START)
-    // =============================
+// rep is completed if start --> peak --> start cycle is completed
     if (
       mappedStateId === startId &&
       templateVisitedPeakRef.current &&
